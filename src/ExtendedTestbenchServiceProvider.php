@@ -23,7 +23,9 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
         PackageRootRebase::apply($app, package_path());
         $this->ensureArtisanEntrypoint();
 
-        config(['cache.default' => 'array']);
+        if (config('cache.default') === 'database') {
+            config(['cache.default' => 'array']);
+        }
     }
 
     /**
@@ -31,7 +33,15 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
      */
     public static function isBoostCommand(array $argv): bool
     {
-        $command = $argv[1] ?? '';
+        $command = '';
+
+        foreach (array_slice($argv, 1) as $token) {
+            if (! str_starts_with($token, '-')) {
+                $command = $token;
+
+                break;
+            }
+        }
 
         return str_starts_with($command, 'boost:') || str_starts_with($command, 'mcp:');
     }
@@ -47,6 +57,12 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
     private function ensureArtisanEntrypoint(): void
     {
         $artisan = package_path('artisan');
+
+        if (is_link($artisan) && ! file_exists($artisan)) {
+            fwrite(STDERR, "extended-testbench: {$artisan} is a dangling symlink; run: rm artisan && ln -s vendor/bin/testbench artisan".PHP_EOL);
+
+            return;
+        }
 
         if (file_exists($artisan) || is_link($artisan)) {
             return;

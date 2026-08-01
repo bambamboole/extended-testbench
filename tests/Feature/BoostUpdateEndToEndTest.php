@@ -49,3 +49,18 @@ test('boost:update writes guidelines to the package root, never the skeleton', f
         ->and(file_exists($this->skeleton.'/CLAUDE.md'))->toBeFalse()
         ->and(file_exists($this->skeleton.'/boost.json'))->toBeFalse();
 });
+
+test('a dangling artisan symlink is left untouched and warns on stderr', function () {
+    symlink('vendor/bin/nonexistent-target', $this->root.'/artisan');
+
+    $process = new Process(
+        [PHP_BINARY, 'vendor/bin/testbench', 'boost:update', '--no-interaction'],
+        $this->root,
+        ['APP_ENV' => 'local', 'APP_DEBUG' => 'true'],
+    );
+    $process->run();
+
+    expect($process->getErrorOutput())->toContain('dangling symlink')
+        ->and(is_link($this->root.'/artisan'))->toBeTrue()
+        ->and(readlink($this->root.'/artisan'))->toBe('vendor/bin/nonexistent-target');
+});

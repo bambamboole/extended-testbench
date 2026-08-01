@@ -12,6 +12,8 @@ test('boost and mcp commands activate the bridge', function (array $argv) {
     'boost:mcp' => [['testbench', 'boost:mcp']],
     'boost:execute-tool' => [['testbench', 'boost:execute-tool', 'SomeTool', 'e30=']],
     'mcp:start' => [['testbench', 'mcp:start', 'laravel-boost']],
+    'options before command' => [['testbench', '--ansi', 'boost:install']],
+    'option=value before command' => [['testbench', '--env=local', 'boost:update']],
 ]);
 
 test('other commands do not activate the bridge', function (array $argv) {
@@ -21,4 +23,6 @@ test('other commands do not activate the bridge', function (array $argv) {
     'workbench:build' => [['testbench', 'workbench:build']],
     'bare invocation' => [['testbench']],
     'empty argv' => [[]],
+    'options before non-boost command' => [['testbench', '--ansi', 'package:test']],
+    'options only' => [['testbench', '--ansi']],
 ]);
