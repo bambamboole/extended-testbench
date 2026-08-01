@@ -45,5 +45,6 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
   are missing, add `APP_ENV=local` to the `env` section of your `testbench.yaml`.
 - Database-backed MCP tools run against the Testbench skeleton app — configure connections
   via your workbench setup as usual.
-- Windows: if symlink creation fails, create the entrypoint manually:
-  `ln -s vendor/bin/testbench artisan`.
+- Windows: if symlink creation fails, create the entrypoint manually with
+  `mklink artisan vendor\bin\testbench` (cmd, may need admin rights or developer mode),
+  or use `ln -s vendor/bin/testbench artisan` from Git Bash/WSL.

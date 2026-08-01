@@ -3,6 +3,13 @@
     "description": "Extends Orchestra Testbench for Laravel package development - makes Laravel Boost work out of the box.",
     "keywords": ["laravel", "boost", "testbench", "package-development", "ai"],
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Manuel Christlieb",
+            "email": "manuel.christlieb@xentral.com",
+            "homepage": "https://github.com/bambamboole"
+        }
+    ],
     "require": {
         "php": "^8.2",
         "laravel/boost": "^2.4"
