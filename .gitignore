@@ -5,3 +5,4 @@ composer.lock
 /CLAUDE.md
 /boost.json
 /.ai/
+.idea/
