@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Bambamboole\ExtendedTestbench;
 
+use Bambamboole\ExtendedTestbench\Commands\InitCommand;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Composer;
 use Illuminate\Support\ServiceProvider;
 
 use function Orchestra\Testbench\package_path;
@@ -13,6 +16,15 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        if ($this->app->runningInConsole() && function_exists('Orchestra\Testbench\package_path')) {
+            $this->app->singleton(InitCommand::class, fn (): InitCommand => new InitCommand(
+                new Composer(new Filesystem, package_path()),
+                package_path(),
+            ));
+
+            $this->commands([InitCommand::class]);
+        }
+
         if (! $this->shouldActivate()) {
             return;
         }
