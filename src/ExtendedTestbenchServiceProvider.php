@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Bambamboole\BoostTestbench;
+namespace Bambamboole\ExtendedTestbench;
 
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 use function Orchestra\Testbench\package_path;
 
-class BoostTestbenchServiceProvider extends ServiceProvider
+class ExtendedTestbenchServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
@@ -53,7 +53,7 @@ class BoostTestbenchServiceProvider extends ServiceProvider
         }
 
         if (! @symlink('vendor'.DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'testbench', $artisan)) {
-            fwrite(STDERR, 'boost-testbench: could not create the artisan symlink; run: ln -s vendor/bin/testbench artisan'.PHP_EOL);
+            fwrite(STDERR, 'extended-testbench: could not create the artisan symlink; run: ln -s vendor/bin/testbench artisan'.PHP_EOL);
         }
     }
 }

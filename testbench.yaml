@@ -1,4 +1,4 @@
 laravel: '@testbench'
 
 providers:
-  - Bambamboole\BoostTestbench\BoostTestbenchServiceProvider
+  - Bambamboole\ExtendedTestbench\ExtendedTestbenchServiceProvider

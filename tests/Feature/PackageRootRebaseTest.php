@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bambamboole\BoostTestbench\PackageRootRebase;
+use Bambamboole\ExtendedTestbench\PackageRootRebase;
 
 test('base path moves to the package root while skeleton paths stay pinned', function () {
     $app = $this->app;

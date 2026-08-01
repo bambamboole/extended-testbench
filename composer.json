@@ -1,6 +1,6 @@
 {
-    "name": "bambamboole/boost-testbench",
-    "description": "Use Laravel Boost in package development with Orchestra Testbench - zero configuration.",
+    "name": "bambamboole/extended-testbench",
+    "description": "Extends Orchestra Testbench for Laravel package development - makes Laravel Boost work out of the box.",
     "keywords": ["laravel", "boost", "testbench", "package-development", "ai"],
     "license": "MIT",
     "require": {
@@ -14,7 +14,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Bambamboole\\BoostTestbench\\": "src/"
+            "Bambamboole\\ExtendedTestbench\\": "src/"
         }
     },
     "autoload-dev": {
@@ -25,7 +25,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Bambamboole\\BoostTestbench\\BoostTestbenchServiceProvider"
+                "Bambamboole\\ExtendedTestbench\\ExtendedTestbenchServiceProvider"
             ]
         }
     },

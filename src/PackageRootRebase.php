@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bambamboole\BoostTestbench;
+namespace Bambamboole\ExtendedTestbench;
 
 use Illuminate\Foundation\Application;
 

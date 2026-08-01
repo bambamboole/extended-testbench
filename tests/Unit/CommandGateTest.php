@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use Bambamboole\BoostTestbench\BoostTestbenchServiceProvider;
+use Bambamboole\ExtendedTestbench\ExtendedTestbenchServiceProvider;
 
 test('boost and mcp commands activate the bridge', function (array $argv) {
-    expect(BoostTestbenchServiceProvider::isBoostCommand($argv))->toBeTrue();
+    expect(ExtendedTestbenchServiceProvider::isBoostCommand($argv))->toBeTrue();
 })->with([
     'boost:install' => [['testbench', 'boost:install']],
     'boost:update' => [['testbench', 'boost:update', '--no-interaction']],
@@ -15,7 +15,7 @@ test('boost and mcp commands activate the bridge', function (array $argv) {
 ]);
 
 test('other commands do not activate the bridge', function (array $argv) {
-    expect(BoostTestbenchServiceProvider::isBoostCommand($argv))->toBeFalse();
+    expect(ExtendedTestbenchServiceProvider::isBoostCommand($argv))->toBeFalse();
 })->with([
     'package:test' => [['testbench', 'package:test']],
     'workbench:build' => [['testbench', 'workbench:build']],

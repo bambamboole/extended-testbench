@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A `bambamboole/boost-testbench` package that makes Laravel Boost work in package repos developed with Orchestra Testbench via a single `composer require --dev`.
+**Goal:** A `bambamboole/extended-testbench` package that makes Laravel Boost work in package repos developed with Orchestra Testbench via a single `composer require --dev`.
 
 **Architecture:** One auto-discovered service provider. When (and only when) a `boost:*`/`mcp:*` command runs under the Testbench CLI, it rebases the booted app's base path to the package root (with skeleton-derived paths pinned first), ensures an `artisan → vendor/bin/testbench` symlink for the MCP entrypoint, and defaults the cache store to `array`. All ~25 `base_path()` sites in Boost then resolve to the package root; Boost internals are never subclassed or rebound.
 
@@ -12,10 +12,10 @@
 
 ## Global Constraints
 
-- Repo root: `/Users/manuel.christlieb/Projects/boost-testbench` (git already initialized, spec committed). Run all commands from there.
+- Repo root: `/Users/manuel.christlieb/Projects/extended-testbench` (git already initialized, spec committed). Run all commands from there.
 - `require`: `"php": "^8.2"`, `"laravel/boost": "^2.4"` — nothing else. **No orchestra/* in `require`** (guard with `function_exists` at runtime).
 - No config file, no facade, no published assets. One provider + one support class.
-- Namespace `Bambamboole\BoostTestbench`, PSR-4 from `src/`.
+- Namespace `Bambamboole\ExtendedTestbench`, PSR-4 from `src/`.
 - Commits: conventional-commit subjects (`feat:`, `test:`, `chore:`, `docs:`). **Never add `Co-Authored-By` or any agent attribution.**
 - No code comments; self-explanatory names only. PHPDoc only for types (e.g. `@param list<string>`).
 - Run `vendor/bin/pint --dirty --format agent` before every commit.
@@ -35,13 +35,13 @@
 - Create: `tests/TestCase.php`
 
 **Interfaces:**
-- Produces: installable composer package with `Bambamboole\BoostTestbench\` autoloading, Pest wired to an Orchestra Testbench `Tests\TestCase`, `composer test` and `composer lint` scripts. Later tasks rely on `Tests\TestCase::getPackageProviders()` returning `[BoostTestbenchServiceProvider::class]` and on `vendor/bin/testbench` existing.
+- Produces: installable composer package with `Bambamboole\ExtendedTestbench\` autoloading, Pest wired to an Orchestra Testbench `Tests\TestCase`, `composer test` and `composer lint` scripts. Later tasks rely on `Tests\TestCase::getPackageProviders()` returning `[ExtendedTestbenchServiceProvider::class]` and on `vendor/bin/testbench` existing.
 
 - [ ] **Step 1: Write `composer.json`**
 
 ```json
 {
-    "name": "bambamboole/boost-testbench",
+    "name": "bambamboole/extended-testbench",
     "description": "Use Laravel Boost in package development with Orchestra Testbench - zero configuration.",
     "keywords": ["laravel", "boost", "testbench", "package-development", "ai"],
     "license": "MIT",
@@ -56,7 +56,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Bambamboole\\BoostTestbench\\": "src/"
+            "Bambamboole\\ExtendedTestbench\\": "src/"
         }
     },
     "autoload-dev": {
@@ -67,7 +67,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Bambamboole\\BoostTestbench\\BoostTestbenchServiceProvider"
+                "Bambamboole\\ExtendedTestbench\\ExtendedTestbenchServiceProvider"
             ]
         }
     },
@@ -145,7 +145,7 @@ The bridge's own provider is the package-under-development here, so it is not in
 laravel: '@testbench'
 
 providers:
-  - Bambamboole\BoostTestbench\BoostTestbenchServiceProvider
+  - Bambamboole\ExtendedTestbench\ExtendedTestbenchServiceProvider
 ```
 
 - [ ] **Step 6: Write `tests/TestCase.php`**
@@ -157,14 +157,14 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use Bambamboole\BoostTestbench\BoostTestbenchServiceProvider;
+use Bambamboole\ExtendedTestbench\ExtendedTestbenchServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra
 {
     protected function getPackageProviders($app): array
     {
-        return [BoostTestbenchServiceProvider::class];
+        return [ExtendedTestbenchServiceProvider::class];
     }
 }
 ```
@@ -181,18 +181,18 @@ uses(Tests\TestCase::class)->in('Feature');
 
 - [ ] **Step 8: Create a placeholder provider so `composer install` autoloading and `package:discover` don't fail**
 
-Create `src/BoostTestbenchServiceProvider.php`:
+Create `src/ExtendedTestbenchServiceProvider.php`:
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace Bambamboole\BoostTestbench;
+namespace Bambamboole\ExtendedTestbench;
 
 use Illuminate\Support\ServiceProvider;
 
-class BoostTestbenchServiceProvider extends ServiceProvider
+class ExtendedTestbenchServiceProvider extends ServiceProvider
 {
     public function register(): void {}
 }
@@ -220,11 +220,11 @@ git add -A && git commit -m "chore: scaffold package"
 ### Task 2: Command gate
 
 **Files:**
-- Modify: `src/BoostTestbenchServiceProvider.php`
+- Modify: `src/ExtendedTestbenchServiceProvider.php`
 - Test: `tests/Unit/CommandGateTest.php`
 
 **Interfaces:**
-- Produces: `BoostTestbenchServiceProvider::isBoostCommand(array $argv): bool` (public static). Task 4's `shouldActivate()` calls it with `$_SERVER['argv'] ?? []`.
+- Produces: `ExtendedTestbenchServiceProvider::isBoostCommand(array $argv): bool` (public static). Task 4's `shouldActivate()` calls it with `$_SERVER['argv'] ?? []`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -235,10 +235,10 @@ Create `tests/Unit/CommandGateTest.php`:
 
 declare(strict_types=1);
 
-use Bambamboole\BoostTestbench\BoostTestbenchServiceProvider;
+use Bambamboole\ExtendedTestbench\ExtendedTestbenchServiceProvider;
 
 test('boost and mcp commands activate the bridge', function (array $argv) {
-    expect(BoostTestbenchServiceProvider::isBoostCommand($argv))->toBeTrue();
+    expect(ExtendedTestbenchServiceProvider::isBoostCommand($argv))->toBeTrue();
 })->with([
     'boost:install' => [['testbench', 'boost:install']],
     'boost:update' => [['testbench', 'boost:update', '--no-interaction']],
@@ -248,7 +248,7 @@ test('boost and mcp commands activate the bridge', function (array $argv) {
 ]);
 
 test('other commands do not activate the bridge', function (array $argv) {
-    expect(BoostTestbenchServiceProvider::isBoostCommand($argv))->toBeFalse();
+    expect(ExtendedTestbenchServiceProvider::isBoostCommand($argv))->toBeFalse();
 })->with([
     'package:test' => [['testbench', 'package:test']],
     'workbench:build' => [['testbench', 'workbench:build']],
@@ -264,7 +264,7 @@ Expected: FAIL — `isBoostCommand` does not exist.
 
 - [ ] **Step 3: Implement the gate method**
 
-Add to `src/BoostTestbenchServiceProvider.php`:
+Add to `src/ExtendedTestbenchServiceProvider.php`:
 
 ```php
     /**
@@ -313,7 +313,7 @@ Create `tests/Feature/PackageRootRebaseTest.php`:
 
 declare(strict_types=1);
 
-use Bambamboole\BoostTestbench\PackageRootRebase;
+use Bambamboole\ExtendedTestbench\PackageRootRebase;
 
 test('base path moves to the package root while skeleton paths stay pinned', function () {
     $app = $this->app;
@@ -374,7 +374,7 @@ Create `src/PackageRootRebase.php`:
 
 declare(strict_types=1);
 
-namespace Bambamboole\BoostTestbench;
+namespace Bambamboole\ExtendedTestbench;
 
 use Illuminate\Foundation\Application;
 
@@ -423,11 +423,11 @@ git add -A && git commit -m "feat: add package root rebase with skeleton path pi
 ### Task 4: Provider activation wiring + artisan entrypoint + end-to-end proof
 
 **Files:**
-- Modify: `src/BoostTestbenchServiceProvider.php`
+- Modify: `src/ExtendedTestbenchServiceProvider.php`
 - Test: `tests/Feature/BoostUpdateEndToEndTest.php`
 
 **Interfaces:**
-- Consumes: `BoostTestbenchServiceProvider::isBoostCommand(array $argv): bool` (Task 2), `PackageRootRebase::apply(Application $app, string $packageRoot): void` (Task 3).
+- Consumes: `ExtendedTestbenchServiceProvider::isBoostCommand(array $argv): bool` (Task 2), `PackageRootRebase::apply(Application $app, string $packageRoot): void` (Task 3).
 - Produces: the finished provider. Activation requires ALL of: `TESTBENCH_CORE` defined (only the testbench binary defines it), not `runningUnitTests()`, `Orchestra\Testbench\package_path` function exists, argv gate passes.
 
 **How the E2E test proves the rebase:** `boost:update` first calls `Config::isValid()` + `Config::getAgents()`, which read `base_path('boost.json')`. The test seeds `boost.json` at the *repo root*. Without the rebase, Boost looks in the Testbench skeleton, finds nothing, and errors out ("Please set up Boost with [php artisan boost:install] first.") — so a zero exit code plus a generated `CLAUDE.md` is only reachable through the rebased path.
@@ -496,21 +496,21 @@ Expected: FAIL — exit code non-zero and/or no `CLAUDE.md` at root, because the
 
 - [ ] **Step 3: Implement the full provider**
 
-Replace `src/BoostTestbenchServiceProvider.php` content (keeping `isBoostCommand` from Task 2):
+Replace `src/ExtendedTestbenchServiceProvider.php` content (keeping `isBoostCommand` from Task 2):
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace Bambamboole\BoostTestbench;
+namespace Bambamboole\ExtendedTestbench;
 
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 use function Orchestra\Testbench\package_path;
 
-class BoostTestbenchServiceProvider extends ServiceProvider
+class ExtendedTestbenchServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
@@ -554,7 +554,7 @@ class BoostTestbenchServiceProvider extends ServiceProvider
         }
 
         if (! @symlink('vendor'.DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'testbench', $artisan)) {
-            fwrite(STDERR, 'boost-testbench: could not create the artisan symlink; run: ln -s vendor/bin/testbench artisan'.PHP_EOL);
+            fwrite(STDERR, 'extended-testbench: could not create the artisan symlink; run: ln -s vendor/bin/testbench artisan'.PHP_EOL);
         }
     }
 }
@@ -597,7 +597,7 @@ git add -A && git commit -m "feat: activate boost path rebase and artisan entryp
 - [ ] **Step 1: Write `README.md`**
 
 ```markdown
-# boost-testbench
+# extended-testbench
 
 Use [Laravel Boost](https://github.com/laravel/boost) in Laravel **package** development with
 [Orchestra Testbench](https://github.com/orchestral/testbench) — zero configuration.
@@ -614,7 +614,7 @@ an additional package — this is that package.
 ## Install
 
 ```bash
-composer require --dev bambamboole/boost-testbench
+composer require --dev bambamboole/extended-testbench
 ```
 
 That's it. The provider is auto-discovered by `testbench package:discover`.
@@ -661,7 +661,7 @@ git add -A && git commit -m "docs: add readme and license"
 Ask the user before executing; creating a public GitHub repo is an outward-facing action:
 
 ```bash
-gh repo create bambamboole/boost-testbench --public --source . --push
+gh repo create bambamboole/extended-testbench --public --source . --push
 ```
 
 Packagist submission (https://packagist.org/packages/submit) is a manual browser step for the user.
@@ -676,7 +676,7 @@ Packagist submission (https://packagist.org/packages/submit) is a manual browser
 - Modify (temporarily): `workbench/app/Providers/WorkbenchServiceProvider.php`
 
 **Interfaces:**
-- Consumes: the finished bridge package on disk at `/Users/manuel.christlieb/Projects/boost-testbench`.
+- Consumes: the finished bridge package on disk at `/Users/manuel.christlieb/Projects/extended-testbench`.
 - Produces: a validation report (CLAUDE.md diff, command exit codes). The real migration commit happens only after Packagist publication, outside this plan.
 
 - [ ] **Step 1: Snapshot the current state**
@@ -690,8 +690,8 @@ cp CLAUDE.md /tmp/CLAUDE.md.before
 - [ ] **Step 2: Swap workaround for bridge**
 
 ```bash
-composer config repositories.boost-testbench '{"type": "path", "url": "../boost-testbench"}'
-composer require --dev bambamboole/boost-testbench:@dev
+composer config repositories.boost-testbench '{"type": "path", "url": "../extended-testbench"}'
+composer require --dev bambamboole/extended-testbench:@dev
 ```
 
 Then remove the workaround: delete the three `workbench/app/Support/Boost*.php` files and strip `WorkbenchServiceProvider` down to:
@@ -739,4 +739,4 @@ git status --short   # must be clean again
 
 - [ ] **Step 5: Report**
 
-Summarize for the user: exit codes, the CLAUDE.md diff highlights, and confirmation the skeleton stayed clean. List the follow-up: publish to Packagist, then commit the real migration in each package (`composer require --dev bambamboole/boost-testbench` + delete workaround).
+Summarize for the user: exit codes, the CLAUDE.md diff highlights, and confirmation the skeleton stayed clean. List the follow-up: publish to Packagist, then commit the real migration in each package (`composer require --dev bambamboole/extended-testbench` + delete workaround).

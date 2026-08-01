@@ -1,8 +1,8 @@
-# boost-testbench: Laravel Boost bridge for package development
+# extended-testbench: Laravel Boost bridge for package development
 
 **Date:** 2026-08-02
 **Status:** Approved
-**Package:** `bambamboole/boost-testbench`
+**Package:** `bambamboole/extended-testbench`
 
 ## Problem
 
@@ -36,8 +36,8 @@ surface and breaks whenever Boost refactors its protected internals.
 
 ### 1. Package shape
 
-- New package `bambamboole/boost-testbench`; consuming packages add it once via
-  `composer require --dev bambamboole/boost-testbench`. Nothing else — the provider is
+- New package `bambamboole/extended-testbench`; consuming packages add it once via
+  `composer require --dev bambamboole/extended-testbench`. Nothing else — the provider is
   auto-discovered by `testbench package:discover`, same as Boost itself.
 - `require`: `php ^8.2`, `laravel/boost ^2.4`. **No** orchestra dependency: Testbench is by
   definition installed wherever `vendor/bin/testbench` runs; guard with
@@ -108,7 +108,7 @@ For laravel-webhooks (template for the others):
 
 - Delete `workbench/app/Support/{BoostConfig,BoostGuidelineComposer,BoostSkillComposer}.php`.
 - Remove all Boost wiring from `WorkbenchServiceProvider` (keep `webhooks.scan_paths`).
-- `composer require --dev bambamboole/boost-testbench`.
+- `composer require --dev bambamboole/extended-testbench`.
 - `composer boost:refresh` keeps working unchanged.
 
 Net effect: ~150 lines deleted per package; previously-broken features start working (third-party
