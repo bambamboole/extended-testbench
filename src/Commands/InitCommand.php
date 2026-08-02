@@ -204,6 +204,10 @@ final class InitCommand extends Command
             $this->composeGuideline();
         }
 
+        if ($this->checking()) {
+            $this->applyCheckIgnores();
+        }
+
         table($this->checking() ? ['File', 'Drift'] : ['File', 'Result'], $this->results);
 
         if ($this->checking()) {
@@ -219,9 +223,36 @@ final class InitCommand extends Command
         return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
     }
 
+    /**
+     * A drift report that cannot be silenced is unusable as a CI gate: a package legitimately has no
+     * tests/Unit, or a stricter phpunit.xml.dist, and the only route to green would be degrading
+     * both. Rows named in composer.json's extra.extended-testbench.check-ignore stay visible but
+     * stop counting, so the exit code tracks unintended drift only.
+     */
+    private function applyCheckIgnores(): void
+    {
+        $ignored = array_map(
+            static fn (mixed $entry): string => (string) $entry,
+            array_values((array) ($this->composerJson()['extra']['extended-testbench']['check-ignore'] ?? [])),
+        );
+
+        if ($ignored === []) {
+            return;
+        }
+
+        foreach ($this->results as $index => $row) {
+            if ($row[1] !== 'ok' && in_array($row[0], $ignored, true)) {
+                $this->results[$index] = [$row[0], "ignored ({$row[1]})"];
+            }
+        }
+    }
+
     private function reportDrift(): int
     {
-        $drifted = array_values(array_filter($this->results, static fn (array $row): bool => $row[1] !== 'ok'));
+        $drifted = array_values(array_filter(
+            $this->results,
+            static fn (array $row): bool => $row[1] !== 'ok' && ! str_starts_with($row[1], 'ignored'),
+        ));
 
         if ($drifted === []) {
             outro('No drift: this package matches the scaffold.');
@@ -509,9 +540,26 @@ final class InitCommand extends Command
         $normalise = static fn (string $line): string => trim(trim($line), '/');
 
         $present = array_map($normalise, preg_split('/\R/', $contents) ?: []);
+
+        // An entry is covered by any ancestor already listed: `.claude` ignores `.claude/skills`
+        // wholesale, and appending the nested line would be redundant rather than a fix.
+        $covered = static function (string $entry) use ($normalise, $present): bool {
+            for ($path = $normalise($entry); $path !== '' && $path !== '.'; $path = dirname($path)) {
+                if (in_array($path, $present, true)) {
+                    return true;
+                }
+
+                if (dirname($path) === $path) {
+                    break;
+                }
+            }
+
+            return false;
+        };
+
         $missing = array_values(array_filter(
             self::GITIGNORE_ENTRIES,
-            static fn (string $entry): bool => ! in_array($normalise($entry), $present, true),
+            static fn (string $entry): bool => ! $covered($entry),
         ));
 
         if ($this->checking()) {
@@ -794,7 +842,13 @@ final class InitCommand extends Command
             return 'missing';
         }
 
-        if ($onlyIfMissing || (string) @file_get_contents($target) === $rendered) {
+        // Whitespace-insensitive: a package that wraps withPaths([...]) across lines, or indents its
+        // neon differently, has not diverged from the scaffold in any way it can act on. Key order
+        // still reads as drift — parsing four config languages to normalise that is not worth it;
+        // baseline it with extra.extended-testbench.check-ignore instead.
+        $matches = static fn (string $a, string $b): bool => preg_replace('/\s+/', '', $a) === preg_replace('/\s+/', '', $b);
+
+        if ($onlyIfMissing || $matches((string) @file_get_contents($target), $rendered)) {
             return 'ok';
         }
 
@@ -879,7 +933,9 @@ final class InitCommand extends Command
 
         if (isset($scripts[$name])) {
             if ($this->checking()) {
-                $this->results[] = ["composer script: {$name}", 'ok'];
+                // Existence by name is not enough: a `check` wired to an entirely different
+                // pipeline would report ok next to the `stan` it never runs.
+                $this->results[] = ["composer script: {$name}", $scripts[$name] === $command ? 'ok' : 'differs'];
             }
 
             return;
@@ -917,17 +973,29 @@ final class InitCommand extends Command
             return;
         }
 
+        // Compare basenames: a package running `./vendor/bin/phpstan` is running the same tool as our
+        // bare `phpstan`, and a raw first-token comparison saw two different strings and stayed
+        // quiet. `@php vendor/bin/x` hides the tool behind the runner, so that prefix is dropped.
         $tool = static function (mixed $value): string {
             $first = is_array($value) ? (string) ($value[0] ?? '') : (string) $value;
+            $tokens = array_values(array_filter(explode(' ', trim($first)), static fn (string $token): bool => $token !== ''));
 
-            return explode(' ', trim($first))[0];
+            if (($tokens[0] ?? '') === '@php') {
+                array_shift($tokens);
+            }
+
+            return basename($tokens[0] ?? '');
         };
 
         $ours = $tool($command);
 
+        if ($ours === '') {
+            return;
+        }
+
         foreach ($scripts as $existing => $existingCommand) {
             if ($tool($existingCommand) === $ours) {
-                warning("composer script '{$existing}' already runs {$ours}; adding '{$name}' alongside it. The generated `check` script calls '{$name}', so drop one of the two or point `check` at yours.");
+                warning("composer script '{$existing}' already runs {$ours}; adding '{$name}' alongside it. The generated `check` script inlines `{$command}` rather than calling either one, so drop whichever of the two you do not want.");
 
                 return;
             }

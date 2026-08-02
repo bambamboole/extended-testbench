@@ -1348,3 +1348,94 @@ it('runs --check without a terminal, without --defaults and without section flag
         ->doesntExpectOutputToContain('needs an interactive terminal')
         ->assertFailed();
 });
+
+it('spots a script collision even when the existing command is a vendor binary path', function () {
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['scripts'] = ['analyse' => './vendor/bin/phpstan analyse'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain("composer script 'analyse' already runs phpstan")
+        ->assertSuccessful();
+});
+
+it('reports a composer script wired to a different pipeline as differing, not ok', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['scripts']['check'] = ['echo "something else entirely"'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    // One unambiguous substring rather than two: every line carrying 'differs' here also carries
+    // 'composer script: check', and Mockery hands each write to the first matching expectation, so
+    // the second would never be consumed.
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('composer script: check: differs')
+        ->assertFailed();
+});
+
+it('treats a gitignore entry as covered when a parent directory is already ignored', function () {
+    file_put_contents($this->root.'/.gitignore', ".claude\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/.gitignore'))->not->toContain('.claude/skills');
+});
+
+it('does not report a purely reformatted config as drift', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+
+    // Same content, different formatting: one line instead of four, and no trailing newline.
+    $pint = (string) file_get_contents($this->root.'/pint.json');
+    file_put_contents($this->root.'/pint.json', preg_replace('/\s+/', '', $pint));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('No drift')
+        ->assertSuccessful();
+});
+
+it('baselines an intentional divergence through the check-ignore list', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+    (new Filesystem)->deleteDirectory($this->root.'/tests/Unit');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('diverge')
+        ->assertFailed();
+
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['extra']['extended-testbench']['check-ignore'] = ['tests/Unit'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('ignored (missing)')
+        ->expectsOutputToContain('No drift')
+        ->assertSuccessful();
+});

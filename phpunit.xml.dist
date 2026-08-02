@@ -18,7 +18,8 @@
         </include>
     </source>
     <php>
-        <env name="APP_KEY" value="base64:8FPzUSBG8wahEueyC96mDz2eL3fDqAK43wfdYeaI3Vg="/>
+        <!-- Testbench's own fixture key; package:purge-skeleton deletes the .env that carries it. -->
+        <env name="APP_KEY" value="AckfSECXIvnK5r28GVIWUAxmbBSjTsmF"/>
         <env name="APP_DEBUG" value="true"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>

@@ -44,11 +44,26 @@
             "providers": [
                 "Bambamboole\\ExtendedTestbench\\ExtendedTestbenchServiceProvider"
             ]
+        },
+        "extended-testbench": {
+            "check-ignore": [
+                "pestphp/pest-plugin-laravel:^5.0",
+                "boost.json"
+            ]
         }
     },
     "scripts": {
-        "post-autoload-dump": "@prepare",
-        "prepare": "@php vendor/bin/testbench package:discover --ansi",
+        "post-autoload-dump": [
+            "@php vendor/bin/testbench package:purge-skeleton --ansi",
+            "@php vendor/bin/testbench package:discover --ansi"
+        ],
+        "boost:refresh": "[ -n \"$CI\" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true",
+        "post-install-cmd": [
+            "@boost:refresh"
+        ],
+        "post-update-cmd": [
+            "@boost:refresh"
+        ],
         "lint": "pint --format agent",
         "test": "pest",
         "stan": "phpstan analyse",

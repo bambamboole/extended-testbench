@@ -88,7 +88,25 @@ exits non-zero when anything diverges, so it works as a CI guard. It answers the
 itself rather than prompting; section flags still narrow what it looks at. Files that hold
 hand-written code (`tests/TestCase.php`, `tests/Pest.php`, `testbench.yaml`, `artisan`,
 `.gitattributes`, the CI workflow) are only checked for existence — comparing their bodies against
-the stub would report every package that has ever edited its own `TestCase`.
+the stub would report every package that has ever edited its own `TestCase`. Comparisons ignore
+whitespace, so reformatting a generated config — wrapping `withPaths([...])`, reindenting the neon —
+is not drift; reordering its keys still is.
+
+Divergence you have decided on is baselined in `composer.json`, so the non-zero exit stays usable as
+a CI gate:
+
+```json
+{
+    "extra": {
+        "extended-testbench": {
+            "check-ignore": ["tests/Unit", "phpunit.xml.dist"]
+        }
+    }
+}
+```
+
+Each entry is a row label from the table. Ignored rows stay visible as `ignored (missing)` or
+`ignored (differs)` — they just stop counting toward the exit code.
 
 Adopting what the check found is what `--force` is for:
 
@@ -122,9 +140,9 @@ file only gets a warning, never rewritten automatically. An `artisan` that is a 
 `vendor/bin/testbench` — the widespread `ln -s vendor/bin/testbench artisan` recipe, which resolves
 locally but breaks on a fresh clone and on Windows — is replaced with the committed shim; a symlink
 pointing anywhere else is yours and only gets a warning. A composer script that already runs a tool
-under its own name (`analyse` where we scaffold `stan`) is reported as a collision rather than
-silently doubled up, but both are kept: renaming your scripts and the CI that calls them is not this
-command's business. It finishes by running `boost:install` (or
+under its own name (`analyse` where we scaffold `stan`, including via `./vendor/bin/phpstan` or
+`@php vendor/bin/phpstan`) is reported as a collision rather than silently doubled up, but both are
+kept: renaming your scripts and the CI that calls them is not this command's business. It finishes by running `boost:install` (or
 `boost:update --discover` when Boost is already set up) and registering itself in `boost.json`'s
 `packages` key — Boost cannot discover a new third-party package non-interactively — so the
 guidelines land in your `CLAUDE.md` / `AGENTS.md` without a second step.

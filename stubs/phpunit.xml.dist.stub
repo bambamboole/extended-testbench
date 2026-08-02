@@ -18,8 +18,7 @@
         </include>
     </source>
     <php>
-        <!-- Testbench's skeleton .env carries this key, but package:purge-skeleton deletes that file
-             on every autoload dump, so a cold suite has no key unless it is pinned here. -->
+        <!-- Testbench's own fixture key; package:purge-skeleton deletes the .env that carries it. -->
         <env name="APP_KEY" value="AckfSECXIvnK5r28GVIWUAxmbBSjTsmF"/>
         <env name="APP_DEBUG" value="true"/>
         <env name="DB_CONNECTION" value="sqlite"/>
