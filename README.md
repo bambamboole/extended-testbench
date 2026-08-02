@@ -44,22 +44,53 @@ in its MCP config, its tool subprocesses, and its guideline text.
 vendor/bin/testbench package:init
 ```
 
-Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint, `phpunit.xml.dist`
-(sqlite `:memory:`), `tests/TestCase.php`, `tests/Pest.php` and `testbench.yaml` when they are
-missing, plus the `.gitignore` entries for everything it and Boost generate. Then it asks about:
+Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint, `.gitattributes`
+(development-only files marked `export-ignore` so they don't ship in the dist archive),
+`phpunit.xml.dist` (sqlite `:memory:`; no `APP_KEY` is generated — the Testbench skeleton already
+provides one), `tests/TestCase.php`, `tests/Pest.php` and `testbench.yaml` when they are missing,
+plus the `.gitignore` entries for everything it and Boost generate. Then it asks about:
 
 - **a workbench app** — adds the `workbench:` block to `testbench.yaml` and hands the namespaces,
   directories and `autoload-dev` entries to Testbench's own `workbench:devtool`
-- **browser tests** — `pest-plugin-browser`, a dummy test, and a `Browser` suite in `tests/Pest.php`
-- **PHPStan** — Larastan + the Pest PHPStan extension, `phpstan.neon.dist`, a `stan` script
+- **browser tests** — `pest-plugin-browser`, a dummy test, a `tests/BrowserTestCase.php` that fails
+  fast when the workbench's Vite build is missing or stale (skipped for packages with no
+  `vite.config`), and a `Browser` suite in `tests/Pest.php` mapped to it instead of the base
+  `TestCase`
+- **PHPStan** — Larastan + the Pest PHPStan extension, `phpstan.neon.dist` (level `6` unless you pass
+  `--phpstan-level`), a `stan` script
 - **Rector** — `rector.php` plus a `refactor` script
 - **Pint** — `pint.json` plus a `lint` script
 
-`src`, `tests` and, when present, `workbench/app` are the analysed paths. Alongside the per-tool
-scripts you get a `check` script composed of whichever tools you accepted, for CI and git hooks.
-Existing files are never replaced without asking. It finishes by running `boost:install` (or
-`boost:update --discover` when Boost is already set up) so the guidelines land in your `CLAUDE.md` /
-`AGENTS.md` without a second step.
+Every section can be answered on the command line, so an agent or a CI job can drive it:
+
+```bash
+vendor/bin/testbench package:init --workbench --browser --phpstan-level=8 --no-rector
+vendor/bin/testbench package:init --defaults
+```
+
+`--no-workbench`, `--no-browser`, `--no-playwright`, `--no-phpstan`, `--no-rector` and `--no-pint`
+answer the other way. Without a terminal and without any of these flags the command refuses to run
+rather than guessing — pass `--defaults` to take every default.
+
+`src`, `tests` and, when present, `workbench/app` are the paths both PHPStan and Rector analyse;
+PHPStan also adds `database` when the package has one. Rector's generated config skips the rule that
+strips unused parameters from public methods, since Laravel resolves many signatures — policy
+methods, middleware, listeners — by reflection, and stripping a parameter the body ignores breaks
+them at runtime. Alongside the per-tool scripts you get a `test` script (the `Browser` suite excluded
+once browser tests are accepted) and a `test:browser` script for that suite, preceded by
+`npm run build` when the package has a `package.json`, plus a `check` script composed of whichever
+tools you accepted, ending in `@test`, for CI and git hooks. It also wires the Testbench
+`post-autoload-dump` hooks (`package:purge-skeleton`, `package:discover`) and a `boost:refresh`
+script into `post-install-cmd` / `post-update-cmd`; `boost:refresh` reruns
+`boost:update --no-interaction` on every local install or update, but no-ops in CI or before
+`vendor/bin/testbench` exists.
+
+Existing files are never replaced without asking; a legacy `phpunit.xml` or `phpstan.neon` that would
+shadow the generated `.dist` file, or an `artisan` that's still a symlink rather than the committed
+shim, only gets a warning, never rewritten automatically. It finishes by running `boost:install` (or
+`boost:update --discover` when Boost is already set up) and registering itself in `boost.json`'s
+`packages` key — Boost cannot discover a new third-party package non-interactively — so the
+guidelines land in your `CLAUDE.md` / `AGENTS.md` without a second step.
 
 What `package:init` scaffolds requires PHP 8.4+ and `orchestra/testbench ^11`: Pest 5 needs PHPUnit 13
 and `symfony/process ^8.1`; testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`,
