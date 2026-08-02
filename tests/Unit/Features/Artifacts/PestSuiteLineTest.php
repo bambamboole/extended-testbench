@@ -68,6 +68,15 @@ it('appends the suite mapping and yields a written result', function () {
         ->and(substr_count($pest, "in('Browser')"))->toBe(1);
 });
 
+it('derives the appended detail from the suite name rather than hardcoding "browser"', function () {
+    $context = makeContext();
+    writePestFile($context, "<?php\n\nuses(Tests\\TestCase::class)->in('Feature');\n");
+
+    $result = first(new PestSuiteLine('E2E', 'Tests\\E2ETestCase')->apply($context));
+
+    expect($result->describe())->toBe('e2e suite appended');
+});
+
 it('yields nothing when the suite is already mapped to the dedicated test case', function () {
     $context = makeContext();
     writePestFile($context, "<?php\n\nuses(\\Tests\\BrowserTestCase::class)->in('Browser');\n");

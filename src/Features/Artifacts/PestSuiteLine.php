@@ -74,7 +74,7 @@ final readonly class PestSuiteLine implements Artifact
             FILE_APPEND,
         );
 
-        yield new Result($this->label(), Status::Written, 'browser suite appended');
+        yield new Result($this->label(), Status::Written, sprintf('%s suite appended', strtolower($this->suite)));
     }
 
     /** The short class name (no namespace) — matches even when only an aliased `use` import is present. */
