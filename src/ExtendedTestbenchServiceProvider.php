@@ -17,7 +17,7 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
     #[\Override]
     public function register(): void
     {
-        if ($this->app->runningInConsole() && function_exists('Orchestra\Testbench\package_path')) {
+        if ($this->app->runningInConsole()) {
             $this->app->singleton(InitCommand::class, fn (): InitCommand => new InitCommand(
                 new Composer(new Filesystem, package_path()),
                 package_path(),
@@ -63,7 +63,6 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
     {
         return defined('TESTBENCH_CORE')
             && ! $this->app->runningUnitTests()
-            && function_exists('Orchestra\Testbench\package_path')
             && self::isBoostCommand($_SERVER['argv'] ?? []);
     }
 

@@ -18,7 +18,11 @@ an additional package — this is that package.
 composer require --dev bambamboole/extended-testbench
 ```
 
-That's it. The provider is auto-discovered by `testbench package:discover`.
+That's it — this is the only dev dependency you need. `orchestra/testbench ^11` comes with it, and
+the provider is auto-discovered by `testbench package:discover`.
+
+Requiring testbench 11 means Laravel 13. If your package still supports Laravel 11 or 12, stay on
+your own `orchestra/testbench` constraint and don't install this bridge yet.
 
 ## Use
 
@@ -90,6 +94,5 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
   becomes a small text file containing its target path instead of a symlink, and `vendor/bin/pest`
   fails loudly on it. Enable symlinks (`git config core.symlinks true` and re-clone) or recreate the
   symlink by hand.
-- The package is developed and tested against `orchestra/testbench ^11` with Pest 5 on PHP 8.4. The
-  bridge itself has no testbench constraint of its own, so it still works on testbench 9 and 10 —
-  that is simply not covered by the test suite.
+- `orchestra/testbench ^11` is a hard requirement, not just what the suite is tested against: it sits
+  in `require` so installing this package is all you need. That means PHP 8.4+ and Laravel 13.
