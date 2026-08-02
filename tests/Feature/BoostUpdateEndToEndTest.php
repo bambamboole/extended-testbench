@@ -96,3 +96,24 @@ test('an existing artisan entrypoint is left untouched', function () {
 
     expect(file_get_contents($this->root.'/artisan'))->toBe("<?php // custom entrypoint\n");
 });
+
+test('a working artisan symlink to the testbench binary is replaced with the shim', function () {
+    // The widespread `ln -s vendor/bin/testbench artisan` recipe: it resolves locally, so
+    // file_exists() reports true and the entrypoint used to be left in place — broken on a fresh
+    // clone and on Windows, which is the failure the committed shim exists to prevent.
+    symlink('vendor/bin/testbench', $this->root.'/artisan');
+
+    expect(is_link($this->root.'/artisan'))->toBeTrue()
+        ->and(file_exists($this->root.'/artisan'))->toBeTrue();
+
+    $process = new Process(
+        [PHP_BINARY, 'vendor/bin/testbench', 'boost:update', '--no-interaction'],
+        $this->root,
+        ['APP_ENV' => 'local', 'APP_DEBUG' => 'true'],
+    );
+    $process->run();
+
+    expect(is_link($this->root.'/artisan'))->toBeFalse()
+        ->and($this->root.'/artisan')->toBeFile()
+        ->and(file_get_contents($this->root.'/artisan'))->toContain("require __DIR__.'/vendor/bin/testbench';");
+});

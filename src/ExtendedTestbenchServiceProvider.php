@@ -70,9 +70,13 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
     {
         $artisan = package_path('artisan');
 
-        // A dangling symlink is left over from the versions of this package that symlinked the
-        // entrypoint; file_exists() reports false for it, so replace it rather than skipping.
-        if (is_link($artisan) && ! file_exists($artisan)) {
+        // Two kinds of symlink get replaced with the committed shim. A dangling one is left over
+        // from the versions of this package that symlinked the entrypoint, and file_exists() reports
+        // false for it. A working one is the widespread `ln -s vendor/bin/testbench artisan` recipe:
+        // it resolves locally, so file_exists() would return early and leave the package broken on a
+        // fresh clone and on Windows — the exact failure the shim exists to prevent. A symlink
+        // pointing anywhere else is the user's own and is left alone.
+        if (is_link($artisan) && (! file_exists($artisan) || $this->linksToTestbenchBinary($artisan))) {
             @unlink($artisan);
         }
 
@@ -85,5 +89,12 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
         if (@file_put_contents($artisan, $stub) === false) {
             fwrite(STDERR, "extended-testbench: could not write {$artisan}; create it manually with: require __DIR__.'/vendor/bin/testbench';".PHP_EOL);
         }
+    }
+
+    private function linksToTestbenchBinary(string $artisan): bool
+    {
+        $binary = realpath(package_path('vendor/bin/testbench'));
+
+        return $binary !== false && realpath($artisan) === $binary;
     }
 }

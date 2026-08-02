@@ -46,6 +46,33 @@ function bindInit(string $root, bool $installs = true): void
     app()->instance(InitCommand::class, new InitCommand($composer, $root));
 }
 
+/**
+ * Brings the temp package to the state a real `package:init` leaves behind, so that --check has
+ * nothing legitimate to report. The Composer double never writes the require-dev entries it claims
+ * to install and Boost never runs, so both would otherwise show up as drift the command is right
+ * about — a real package that ran init has the packages installed and boost.json registered.
+ */
+function completeScaffold(string $root): void
+{
+    $composer = json_decode((string) file_get_contents($root.'/composer.json'), true);
+
+    foreach ([
+        'pestphp/pest',
+        'pestphp/pest-plugin-laravel',
+        'larastan/larastan',
+        'pestphp/pest-plugin-phpstan',
+        'rector/rector',
+        'laravel/pint',
+    ] as $package) {
+        $composer['require-dev'][$package] = '*';
+    }
+
+    file_put_contents($root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    file_put_contents($root.'/boost.json', json_encode([
+        'packages' => ['bambamboole/extended-testbench'],
+    ], JSON_PRETTY_PRINT));
+}
+
 it('registers the package:init command', function () {
     expect(array_keys($this->app[Kernel::class]->all()))
         ->toContain('package:init');
@@ -175,6 +202,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
             ['.gitattributes', 'written'],
+            ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
@@ -211,6 +239,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
             ['.gitattributes', 'written'],
+            ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
@@ -302,6 +331,7 @@ it('reports failure and records it in the summary when a composer install fails'
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
             ['.gitattributes', 'written'],
+            ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
             ['pestphp/pest:^5.0', 'failed'],
             ['pestphp/pest-plugin-laravel:^5.0', 'failed'],
@@ -1137,6 +1167,7 @@ it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
             ['.gitattributes', 'written'],
+            ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit/.gitkeep', 'written'],
             ['tests/Feature/.gitkeep', 'written'],
@@ -1156,4 +1187,161 @@ it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy
 
     expect($this->root.'/phpunit.xml.dist')->toBeDirectory()
         ->and(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>');
+});
+
+it('scaffolds a CI workflow that runs the check script', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/.github/workflows/ci.yml'))
+        ->toContain('composer check')
+        ->toContain("php-version: '8.4'");
+});
+
+it('scaffolds a testbench.yaml that keeps the app in the local environment boost needs', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/testbench.yaml'))
+        ->toContain("env:\n  APP_ENV: local");
+});
+
+it('replaces a working artisan symlink pointing at the testbench binary', function () {
+    mkdir($this->root.'/vendor/bin', 0755, true);
+    file_put_contents($this->root.'/vendor/bin/testbench', "#!/usr/bin/env php\n");
+    symlink($this->root.'/vendor/bin/testbench', $this->root.'/artisan');
+
+    expect($this->root.'/artisan')->toBeReadableFile();
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(is_link($this->root.'/artisan'))->toBeFalse()
+        ->and(file_get_contents($this->root.'/artisan'))
+        ->toContain("require __DIR__.'/vendor/bin/testbench';");
+});
+
+it('leaves an artisan symlink pointing somewhere else alone', function () {
+    file_put_contents($this->root.'/elsewhere.php', "<?php // mine\n");
+    symlink($this->root.'/elsewhere.php', $this->root.'/artisan');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('symlink to something other than vendor/bin/testbench')
+        ->assertSuccessful();
+
+    expect(is_link($this->root.'/artisan'))->toBeTrue()
+        ->and(file_get_contents($this->root.'/artisan'))->toBe("<?php // mine\n");
+});
+
+it('warns when a composer script already runs the same tool under another name', function () {
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['scripts'] = ['analyse' => 'phpstan analyse --memory-limit=2G'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain("composer script 'analyse' already runs phpstan")
+        ->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts)->toHaveKeys(['analyse', 'stan']);
+});
+
+it('composes the guideline in the same run instead of only registering it', function () {
+    file_put_contents($this->root.'/boost.json', json_encode(['guidelines' => true], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('boost:update')
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench']);
+});
+
+it('reports drift and writes absolutely nothing under --check', function () {
+    $before = ['composer.json' => (string) file_get_contents($this->root.'/composer.json')];
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('missing')
+        ->assertFailed();
+
+    expect(file_get_contents($this->root.'/composer.json'))->toBe($before['composer.json'])
+        ->and($this->root.'/phpunit.xml.dist')->not->toBeFile()
+        ->and($this->root.'/artisan')->not->toBeFile()
+        ->and($this->root.'/.gitignore')->not->toBeFile()
+        ->and($this->root.'/tests')->not->toBeDirectory();
+});
+
+it('reports no drift for a package it just scaffolded', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+    bindInit($this->root);
+
+    // doesntExpectOutputToContain('written') guards the state reset in handle(): the command is a
+    // container singleton whose instance Artisan caches, so without it the scaffold run's rows are
+    // still in $results and every one of them is reported as drift by the check that follows.
+    $this->artisan('package:init', ['--check' => true])
+        ->doesntExpectOutputToContain('written')
+        ->expectsOutputToContain('No drift')
+        ->assertSuccessful();
+});
+
+it('reports a customised generated config as differing rather than missing', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    file_put_contents($this->root.'/pint.json', '{"preset":"laravel"}');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('differs')
+        ->assertFailed();
+
+    expect(file_get_contents($this->root.'/pint.json'))->toBe('{"preset":"laravel"}');
+});
+
+it('does not treat a hand-edited TestCase as drift', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    file_put_contents($this->root.'/tests/TestCase.php', "<?php\n// heavily customised\n");
+
+    completeScaffold($this->root);
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain('No drift')
+        ->assertSuccessful();
+});
+
+it('runs --check without a terminal, without --defaults and without section flags', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true, '--no-interaction' => true])
+        ->doesntExpectOutputToContain('needs an interactive terminal')
+        ->assertFailed();
 });

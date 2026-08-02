@@ -12,3 +12,5 @@ composer.lock
 /.mcp.json
 /.claude/skills/
 /.junie/
+/.agents/
+/.codex/
