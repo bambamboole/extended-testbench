@@ -49,6 +49,22 @@ Requires PHP 8.4+ and `orchestra/testbench ^11`. Pest 5 needs PHPUnit 13 and `sy
 testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`, so only testbench 11
 (Laravel 13) resolves. `pest-plugin-browser` additionally requires `ext-sockets`.
 
+## Shipped guidelines
+
+This package publishes one Boost guideline covering comments, git and pull request conventions, and
+the Testbench-specific facts agents get wrong (`artisan` is a symlink, `base_path()` is the skeleton
+and not your package). Boost discovers it automatically and composes it into your `CLAUDE.md` /
+`AGENTS.md` under a `bambamboole/extended-testbench rules` heading.
+
+You are asked about it during `vendor/bin/testbench boost:install`. If Boost is already installed,
+pick it up once with:
+
+```bash
+vendor/bin/testbench boost:update --discover
+```
+
+Edit or override anything by adding your own files to `.ai/guidelines/` in your package.
+
 ## How it works
 
 Only while a `boost:*` or `mcp:*` command runs under the Testbench CLI, the provider rebases

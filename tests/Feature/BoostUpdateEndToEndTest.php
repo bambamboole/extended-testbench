@@ -30,7 +30,7 @@ afterEach(function () {
         @unlink($this->root.$file);
     }
 
-    File::deleteDirectory($this->root.'/.ai');
+    File::deleteDirectory($this->root.'/.ai/skills');
 });
 
 test('boost:update writes guidelines to the package root, never the skeleton', function () {

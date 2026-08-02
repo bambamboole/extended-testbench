@@ -4,7 +4,8 @@ composer.lock
 /artisan
 /CLAUDE.md
 /boost.json
-/.ai/
+/.ai/*
+!/.ai/guidelines/
 .idea/
 /docs/superpowers/
 .superpowers/
