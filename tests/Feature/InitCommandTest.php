@@ -776,6 +776,33 @@ it('writes the phpstan level given on the command line', function () {
     expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
 });
 
+it('refuses an invalid --phpstan-level before writing anything', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--defaults' => true,
+        '--phpstan-level' => '99',
+    ])->assertFailed();
+
+    expect($this->root.'/phpunit.xml.dist')->not->toBeFile()
+        ->and($this->root.'/artisan')->not->toBeFile();
+});
+
+it('warns when --playwright is passed but browser tests resolve false', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--defaults' => true,
+        '--playwright' => true,
+    ])
+        ->expectsOutputToContain('--playwright has no effect because browser tests resolved false')
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
 it('keeps the browser suite out of test and check', function () {
     bindInit($this->root);
 
@@ -908,6 +935,44 @@ it('treats a malformed packages key as empty instead of throwing', function () {
     expect($boost['packages'])->toBe(['bambamboole/extended-testbench']);
 });
 
+it('records boost.json as failed (unreadable) instead of silently skipping unparseable json', function () {
+    file_put_contents($this->root.'/boost.json', '{not valid json');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('failed (unreadable)')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/boost.json'))->toBe('{not valid json');
+});
+
+it('keeps boost.json keys sorted the way Boost\'s own writer does after registering the guideline', function () {
+    file_put_contents($this->root.'/boost.json', json_encode([
+        'guidelines' => true,
+        'agents' => ['claude'],
+    ], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect(array_keys($boost))->toBe(['agents', 'guidelines', 'packages']);
+});
+
+it('tells the user to rerun boost:update after registering the guideline', function () {
+    file_put_contents($this->root.'/boost.json', json_encode(['guidelines' => true], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('Run vendor/bin/testbench boost:update to compose this guideline')
+        ->assertSuccessful();
+});
+
 it('does not bake an app key into the generated phpunit config', function () {
     bindInit($this->root);
 
@@ -923,7 +988,7 @@ it('warns when a legacy phpunit.xml will shadow the generated dist config', func
     bindInit($this->root);
 
     $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
-        ->expectsOutputToContain('phpunit.xml')
+        ->expectsOutputToContain('phpunit.xml already exists and takes precedence over phpunit.xml.dist')
         ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>')
@@ -931,7 +996,10 @@ it('warns when a legacy phpunit.xml will shadow the generated dist config', func
 });
 
 it('warns when artisan is still a symlink instead of the shim', function () {
-    symlink('vendor/bin/testbench', $this->root.'/artisan');
+    // Points at composer.json (already written in beforeEach) rather than vendor/bin/testbench so
+    // the symlink resolves to a real file — a *non-dangling* symlink, deliberately, since a dangling
+    // one is now replaced instead of warned about (see the "dangling artisan symlink" test below).
+    symlink('composer.json', $this->root.'/artisan');
 
     bindInit($this->root);
 
@@ -940,6 +1008,18 @@ it('warns when artisan is still a symlink instead of the shim', function () {
         ->assertSuccessful();
 
     expect(is_link($this->root.'/artisan'))->toBeTrue();
+});
+
+it('replaces a dangling artisan symlink instead of writing through it', function () {
+    symlink($this->root.'/does-not-exist', $this->root.'/artisan');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(is_link($this->root.'/artisan'))->toBeFalse()
+        ->and(file_get_contents($this->root.'/artisan'))->toContain("require __DIR__.'/vendor/bin/testbench';");
 });
 
 it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy phpunit.xml also shadows it', function () {

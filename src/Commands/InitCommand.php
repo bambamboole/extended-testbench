@@ -90,7 +90,13 @@ final class InitCommand extends Command
     {
         if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
             error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
-            note('Flags: --workbench --browser --playwright --phpstan --phpstan-level=6 --rector --pint, and --no-* for each.');
+            note('Flags: --workbench --browser --playwright --phpstan --rector --pint, and --no-* for each.');
+
+            return self::FAILURE;
+        }
+
+        if ($this->input->hasParameterOption('--phpstan-level') && ! in_array((string) $this->option('phpstan-level'), ['5', '6', '7', '8', '9', 'max'], true)) {
+            error('--phpstan-level must be one of: 5, 6, 7, 8, 9, max.');
 
             return self::FAILURE;
         }
@@ -101,6 +107,10 @@ final class InitCommand extends Command
 
         $browser = $this->resolve('browser', 'Add browser tests?', false);
         $playwright = $browser && $this->resolve('playwright', 'Install Playwright browsers now?', false);
+
+        if ($this->option('playwright') === true && ! $playwright) {
+            warning('--playwright has no effect because browser tests resolved false. Pass --browser as well.');
+        }
 
         $phpstan = $this->resolve('phpstan', 'Add PHPStan (Larastan)?', true);
         $level = $this->phpstanLevel($phpstan);
@@ -466,6 +476,8 @@ final class InitCommand extends Command
         $config = json_decode((string) @file_get_contents($path), true);
 
         if (! is_array($config)) {
+            $this->results[] = ['boost.json', 'failed (unreadable)'];
+
             return;
         }
 
@@ -478,6 +490,8 @@ final class InitCommand extends Command
         $packages[] = 'bambamboole/extended-testbench';
         $config['packages'] = $packages;
 
+        ksort($config);
+
         if (@file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
             $this->results[] = ['boost.json', 'failed'];
 
@@ -485,6 +499,7 @@ final class InitCommand extends Command
         }
 
         $this->results[] = ['boost.json', 'registered guideline'];
+        note('Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md now.');
     }
 
     /** @return array<int, string> */
@@ -549,6 +564,13 @@ final class InitCommand extends Command
     private function write(string $path, string $stub, array $replacements = [], bool $onlyIfMissing = false): void
     {
         $target = $this->root.'/'.$path;
+
+        // A dangling symlink makes file_exists() report false, so onlyIfMissing would not trip and
+        // file_put_contents() would write through the link, creating whatever it pointed at.
+        if (is_link($target) && ! file_exists($target)) {
+            @unlink($target);
+        }
+
         $existed = file_exists($target);
 
         if ($existed) {
