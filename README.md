@@ -65,3 +65,6 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
 - Windows: if symlink creation fails, create the entrypoint manually with
   `mklink artisan vendor\bin\testbench` (cmd, may need admin rights or developer mode),
   or use `ln -s vendor/bin/testbench artisan` from Git Bash/WSL.
+- The package is developed and tested against `orchestra/testbench ^11` with Pest 5 on PHP 8.4. The
+  bridge itself has no testbench constraint of its own, so it still works on testbench 9 and 10 —
+  that is simply not covered by the test suite.
