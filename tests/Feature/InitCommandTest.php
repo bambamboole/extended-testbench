@@ -112,6 +112,35 @@ it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit doe
         ->and($this->root.'/tests/Feature/.gitkeep')->toBeFile();
 });
 
+it('records a failed outcome instead of a false "written" when a path is blocked by a file', function () {
+    // A regular file named `tests` makes every `mkdir('tests/...', recursive: true)` fail with
+    // "File exists", deterministically and regardless of the runner's UID (unlike chmod, which
+    // root ignores). This blocks both testDirectory() (tests/Unit, tests/Feature) and write()
+    // (tests/TestCase.php, tests/Pest.php).
+    file_put_contents($this->root.'/tests', 'not a directory');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsPromptsTable(['File', 'Result'], [
+            ['tests/Unit', 'failed'],
+            ['tests/Feature', 'failed'],
+            ['phpunit.xml.dist', 'written'],
+            ['tests/TestCase.php', 'failed'],
+            ['tests/Pest.php', 'failed'],
+            ['testbench.yaml', 'written'],
+            ['composer script: test', 'added'],
+        ])
+        ->assertSuccessful();
+
+    expect($this->root.'/tests')->toBeFile()
+        ->and($this->root.'/tests')->not->toBeDirectory();
+});
+
 it('keeps existing files when the overwrite prompt is declined', function () {
     file_put_contents($this->root.'/phpunit.xml.dist', 'ORIGINAL');
     mkdir($this->root.'/tests', 0755, true);
@@ -160,7 +189,7 @@ it('warns instead of overwriting when browser tests are accepted but the phpunit
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'no')
-        ->expectsPromptsWarning('phpunit.xml.dist was kept as-is — add the Browser testsuite to it by hand.')
+        ->expectsPromptsWarning('phpunit.xml.dist does not include the Browser testsuite — add it by hand.')
         ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpunit.xml.dist'))->toBe('ORIGINAL')

@@ -109,7 +109,7 @@ final class InitCommand extends Command
         ]);
 
         if ($browser && ! str_contains((string) file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
-            warning('phpunit.xml.dist was kept as-is — add the Browser testsuite to it by hand.');
+            warning('phpunit.xml.dist does not include the Browser testsuite — add it by hand.');
         }
 
         $this->write('tests/TestCase.php', 'TestCase.php.stub', [
@@ -196,8 +196,10 @@ final class InitCommand extends Command
     {
         $dir = $this->root.'/'.$path;
 
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, recursive: true);
+        if (! is_dir($dir) && ! @mkdir($dir, 0755, recursive: true)) {
+            $this->results[] = [$path, 'failed'];
+
+            return;
         }
 
         $gitkeep = $path.'/.gitkeep';
@@ -206,7 +208,11 @@ final class InitCommand extends Command
             return;
         }
 
-        file_put_contents($this->root.'/'.$gitkeep, '');
+        if (@file_put_contents($this->root.'/'.$gitkeep, '') === false) {
+            $this->results[] = [$gitkeep, 'failed'];
+
+            return;
+        }
 
         $this->results[] = [$gitkeep, 'written'];
     }
@@ -254,13 +260,13 @@ final class InitCommand extends Command
             }
         }
 
-        if (! is_dir(dirname($target)) && ! mkdir(dirname($target), 0755, recursive: true)) {
+        if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0755, recursive: true)) {
             $this->results[] = [$path, 'failed'];
 
             return;
         }
 
-        if (file_put_contents($target, $this->render($stub, $replacements)) === false) {
+        if (@file_put_contents($target, $this->render($stub, $replacements)) === false) {
             $this->results[] = [$path, 'failed'];
 
             return;
