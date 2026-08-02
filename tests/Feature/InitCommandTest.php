@@ -172,6 +172,10 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
@@ -203,6 +207,10 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
@@ -291,6 +299,10 @@ it('reports failure and records it in the summary when a composer install fails'
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->expectsPromptsError('Failed to install: pestphp/pest:^5.0, pestphp/pest-plugin-laravel:^5.0')
@@ -494,7 +506,7 @@ it('composes a check script from the accepted tools', function () {
         'pint --test',
         'phpstan analyse',
         'rector --dry-run',
-        'pest',
+        '@test',
     ]);
 });
 
@@ -511,7 +523,7 @@ it('leaves the declined tools out of the check script', function () {
 
     $composerJson = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
 
-    expect($composerJson['scripts']['check'])->toBe(['pest']);
+    expect($composerJson['scripts']['check'])->toBe(['@test']);
 });
 
 it('adds the workbench block to testbench.yaml when a workbench app is accepted', function () {
@@ -646,4 +658,73 @@ it('writes the phpstan level given on the command line', function () {
     ])->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
+});
+
+it('keeps the browser suite out of test and check', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--no-phpstan' => true,
+        '--no-rector' => true,
+        '--no-pint' => true,
+    ])->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['test'])->toBe('pest --testsuite=Unit,Feature')
+        ->and($scripts['test:browser'])->toBe('pest --testsuite=Browser')
+        ->and($scripts['check'])->toBe(['@test']);
+});
+
+it('writes a plain test script when browser tests are declined', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['test'])->toBe('pest')
+        ->and($scripts)->not->toHaveKey('test:browser')
+        ->and($scripts['check'])->toBe(['pint --test', 'phpstan analyse', 'rector --dry-run', '@test']);
+});
+
+it('builds assets before the browser suite when the package has a package.json', function () {
+    file_put_contents($this->root.'/package.json', '{"name":"acme"}');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--no-phpstan' => true,
+        '--no-rector' => true,
+        '--no-pint' => true,
+    ])->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['test:browser'])->toBe(['npm run build', 'pest --testsuite=Browser']);
+});
+
+it('scaffolds the testbench autoload hooks and a guarded boost refresh', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['post-autoload-dump'])->toBe([
+        '@php vendor/bin/testbench package:purge-skeleton --ansi',
+        '@php vendor/bin/testbench package:discover --ansi',
+    ])
+        ->and($scripts['post-install-cmd'])->toBe(['@boost:refresh'])
+        ->and($scripts['post-update-cmd'])->toBe(['@boost:refresh'])
+        ->and($scripts['boost:refresh'])->toContain('[ -n "$CI" ]')
+        ->and($scripts['boost:refresh'])->toContain('boost:update --no-interaction');
 });

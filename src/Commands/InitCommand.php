@@ -141,8 +141,17 @@ final class InitCommand extends Command
             $pint ? 'pint --test' : null,
             $phpstan ? 'phpstan analyse' : null,
             $rector ? 'rector --dry-run' : null,
-            'pest',
+            '@test',
         ])));
+
+        $this->script('post-autoload-dump', [
+            '@php vendor/bin/testbench package:purge-skeleton --ansi',
+            '@php vendor/bin/testbench package:discover --ansi',
+        ]);
+
+        $this->script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || vendor/bin/testbench boost:update --no-interaction');
+        $this->script('post-install-cmd', ['@boost:refresh']);
+        $this->script('post-update-cmd', ['@boost:refresh']);
 
         if ($this->autoloadChanged) {
             $this->composer->dumpAutoloads();
@@ -233,7 +242,7 @@ final class InitCommand extends Command
             'workbench' => $workbench ? self::WORKBENCH_BLOCK : '',
         ], onlyIfMissing: true);
 
-        $this->script('test', 'pest');
+        $this->script('test', $browser ? 'pest --testsuite=Unit,Feature' : 'pest');
     }
 
     /**
@@ -267,6 +276,10 @@ final class InitCommand extends Command
         $this->install(['pestphp/pest-plugin-browser:^5.0']);
 
         $this->write('tests/Browser/DummyTest.php', 'BrowserDummyTest.php.stub');
+
+        $this->script('test:browser', file_exists($this->root.'/package.json')
+            ? ['npm run build', 'pest --testsuite=Browser']
+            : 'pest --testsuite=Browser');
 
         $pest = $this->root.'/tests/Pest.php';
 
