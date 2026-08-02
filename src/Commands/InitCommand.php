@@ -108,7 +108,7 @@ final class InitCommand extends Command
             'browser_testsuite' => $browser ? self::BROWSER_TESTSUITE : '',
         ]);
 
-        if ($browser && ! str_contains((string) file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
+        if ($browser && ! str_contains((string) @file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
             warning('phpunit.xml.dist does not include the Browser testsuite — add it by hand.');
         }
 
