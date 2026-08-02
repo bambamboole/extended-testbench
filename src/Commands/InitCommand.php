@@ -51,7 +51,21 @@ final class InitCommand extends Command
         '/.junie/',
     ];
 
-    protected $signature = 'package:init';
+    protected $signature = 'package:init
+        {--defaults : Accept every default without prompting}
+        {--workbench : Scaffold a workbench app}
+        {--no-workbench : Skip the workbench app}
+        {--browser : Add browser tests}
+        {--no-browser : Skip browser tests}
+        {--playwright : Install Playwright browsers}
+        {--no-playwright : Skip installing Playwright browsers}
+        {--phpstan : Add PHPStan (Larastan)}
+        {--no-phpstan : Skip PHPStan}
+        {--phpstan-level=6 : The PHPStan level to write}
+        {--rector : Add Rector}
+        {--no-rector : Skip Rector}
+        {--pint : Add Pint}
+        {--no-pint : Skip Pint}';
 
     protected $description = 'Scaffold Pest, static analysis and formatting for this package';
 
@@ -74,20 +88,43 @@ final class InitCommand extends Command
 
     public function handle(): int
     {
+        if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
+            error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
+            note('Flags: --workbench --browser --playwright --phpstan --rector --pint, and --no-* for each.');
+
+            return self::FAILURE;
+        }
+
+        if ($this->input->hasParameterOption('--phpstan-level') && ! in_array((string) $this->option('phpstan-level'), ['5', '6', '7', '8', '9', 'max'], true)) {
+            error('--phpstan-level must be one of: 5, 6, 7, 8, 9, max.');
+
+            return self::FAILURE;
+        }
+
         intro('extended-testbench: package init');
 
-        $workbench = confirm('Add a workbench app?', default: false);
+        $workbench = $this->resolve('workbench', 'Add a workbench app?', false);
 
-        $browser = confirm('Add browser tests?', default: false);
-        $playwright = $browser && confirm('Install Playwright browsers now?', default: false);
+        $browser = $this->resolve('browser', 'Add browser tests?', false);
+        $playwright = $browser && $this->resolve('playwright', 'Install Playwright browsers now?', false);
 
-        $phpstan = confirm('Add PHPStan (Larastan)?', default: true);
-        $level = $phpstan ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6') : '6';
+        if ($this->option('playwright') === true && ! $playwright) {
+            warning('--playwright has no effect because browser tests resolved false. Pass --browser as well.');
+        }
 
-        $rector = confirm('Add Rector?', default: true);
-        $pint = confirm('Add Pint?', default: true);
+        $phpstan = $this->resolve('phpstan', 'Add PHPStan (Larastan)?', true);
+        $level = $this->phpstanLevel($phpstan);
+
+        $rector = $this->resolve('rector', 'Add Rector?', true);
+        $pint = $this->resolve('pint', 'Add Pint?', true);
 
         $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+        $this->write('.gitattributes', 'gitattributes.stub', onlyIfMissing: true);
+
+        if (is_link($this->root.'/artisan')) {
+            warning('artisan is a symlink, not the shim this package now writes. Both work; replace it with `rm artisan` followed by a rerun if you want the committed shim.');
+        }
+
         $this->gitignore();
 
         $this->pest($browser, $workbench);
@@ -120,14 +157,24 @@ final class InitCommand extends Command
             $pint ? 'pint --test' : null,
             $phpstan ? 'phpstan analyse' : null,
             $rector ? 'rector --dry-run' : null,
-            'pest',
+            '@test',
         ])));
+
+        $this->script('post-autoload-dump', [
+            '@php vendor/bin/testbench package:purge-skeleton --ansi',
+            '@php vendor/bin/testbench package:discover --ansi',
+        ]);
+
+        $this->script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true');
+        $this->script('post-install-cmd', ['@boost:refresh']);
+        $this->script('post-update-cmd', ['@boost:refresh']);
 
         if ($this->autoloadChanged) {
             $this->composer->dumpAutoloads();
         }
 
         $this->boost();
+        $this->registerGuideline();
 
         table(['File', 'Result'], $this->results);
 
@@ -140,6 +187,66 @@ final class InitCommand extends Command
         return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
     }
 
+    private function resolve(string $name, string $question, bool $default): bool
+    {
+        if ($this->option($name) === true) {
+            return true;
+        }
+
+        if ($this->option('no-'.$name) === true) {
+            return false;
+        }
+
+        if ($this->option('defaults') === true) {
+            return $default;
+        }
+
+        return $this->canPrompt()
+            ? confirm($question, default: $default)
+            : $default;
+    }
+
+    private function hasSectionFlag(): bool
+    {
+        return array_any(['workbench', 'browser', 'playwright', 'phpstan', 'rector', 'pint'], fn (string $section): bool => $this->option($section) === true || $this->option('no-'.$section) === true);
+    }
+
+    private function phpstanLevel(bool $phpstan): string
+    {
+        if (! $phpstan) {
+            return '6';
+        }
+
+        if ($this->input->hasParameterOption('--phpstan-level')) {
+            return (string) $this->option('phpstan-level');
+        }
+
+        if ($this->option('defaults') === true) {
+            return '6';
+        }
+
+        return $this->canPrompt()
+            ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6')
+            : '6';
+    }
+
+    /**
+     * Whether a prompt will actually reach a user. `$this->input->isInteractive()` alone is not
+     * enough: Symfony only flips it false when `--no-interaction` is passed explicitly, so a truly
+     * headless caller (a shell script, CI, an agent) that omits the flag would otherwise sail past
+     * here and every confirm()/select() would silently fall back to its default. Mirrors the real
+     * check Laravel's own ConfiguresPrompts::configurePrompts() uses, minus its runningUnitTests()
+     * fallback — keeping that would make this always true in the test suite and defeat the guard.
+     */
+    private function canPrompt(): bool
+    {
+        if (! $this->input->isInteractive()) {
+            return false;
+        }
+
+        return $this->laravel->runningUnitTests() || (defined('STDIN') && stream_isatty(STDIN));
+    }
+
     private function pest(bool $browser, bool $workbench): void
     {
         $this->install(['pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0']);
@@ -148,9 +255,10 @@ final class InitCommand extends Command
         $this->testDirectory('tests/Feature');
 
         $this->write('phpunit.xml.dist', 'phpunit.xml.dist.stub', [
-            'app_key' => 'base64:'.base64_encode(random_bytes(32)),
             'browser_testsuite' => $browser ? self::BROWSER_TESTSUITE : '',
         ]);
+
+        $this->warnIfShadowed('phpunit.xml.dist');
 
         if ($browser && ! str_contains((string) @file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
             warning('phpunit.xml.dist does not include the Browser testsuite — add it by hand.');
@@ -166,7 +274,7 @@ final class InitCommand extends Command
 
         $this->write('tests/Pest.php', 'Pest.php.stub', [
             'test_case' => '\\'.$this->testNamespace().'TestCase',
-            'suites' => $browser ? "'Feature', 'Unit', 'Browser'" : "'Feature', 'Unit'",
+            'suites' => "'Feature', 'Unit'",
         ], onlyIfMissing: true);
 
         $this->write('testbench.yaml', 'testbench.yaml.stub', [
@@ -177,7 +285,7 @@ final class InitCommand extends Command
             'workbench' => $workbench ? self::WORKBENCH_BLOCK : '',
         ], onlyIfMissing: true);
 
-        $this->script('test', 'pest');
+        $this->script('test', $browser ? 'pest --testsuite=Unit,Feature' : 'pest');
     }
 
     /**
@@ -210,17 +318,35 @@ final class InitCommand extends Command
     {
         $this->install(['pestphp/pest-plugin-browser:^5.0']);
 
+        $this->write('tests/BrowserTestCase.php', 'BrowserTestCase.php.stub', [
+            'namespace' => rtrim($this->testNamespace(), '\\'),
+        ], onlyIfMissing: true);
+
         $this->write('tests/Browser/DummyTest.php', 'BrowserDummyTest.php.stub');
+
+        $this->script('test:browser', file_exists($this->root.'/package.json')
+            ? ['npm run build', 'pest --testsuite=Browser']
+            : 'pest --testsuite=Browser');
 
         $pest = $this->root.'/tests/Pest.php';
 
-        if (! file_exists($pest) || str_contains((string) file_get_contents($pest), "'Browser'")) {
+        if (! file_exists($pest)) {
+            return;
+        }
+
+        $contents = (string) file_get_contents($pest);
+
+        if (str_contains($contents, "'Browser'")) {
+            if (! str_contains($contents, 'BrowserTestCase')) {
+                warning("tests/Pest.php already maps 'Browser' to the base TestCase. Change that line to uses(\\{$this->testNamespace()}BrowserTestCase::class)->in('Browser'); so the Vite guard runs.");
+            }
+
             return;
         }
 
         file_put_contents(
             $pest,
-            sprintf("\nuses(\\%sTestCase::class)->in('Browser');\n", $this->testNamespace()),
+            sprintf("\nuses(\\%sBrowserTestCase::class)->in('Browser');\n", $this->testNamespace()),
             FILE_APPEND,
         );
 
@@ -243,7 +369,10 @@ final class InitCommand extends Command
         $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', [
             'level' => $level,
             'workbench_path' => $this->hasWorkbench() ? "\n        - workbench/app" : '',
+            'database_path' => $this->hasDatabase() ? "\n        - database" : '',
         ]);
+
+        $this->warnIfShadowed('phpstan.neon.dist');
 
         $this->script('stan', 'phpstan analyse');
     }
@@ -264,12 +393,23 @@ final class InitCommand extends Command
         return is_dir($this->root.'/workbench/app');
     }
 
+    private function hasDatabase(): bool
+    {
+        return is_dir($this->root.'/database');
+    }
+
     private function gitignore(): void
     {
         $path = $this->root.'/.gitignore';
         $contents = file_exists($path) ? (string) @file_get_contents($path) : '';
-        $present = array_map(trim(...), preg_split('/\R/', $contents) ?: []);
-        $missing = array_values(array_diff(self::GITIGNORE_ENTRIES, $present));
+
+        $normalise = static fn (string $line): string => ltrim(trim($line), '/');
+
+        $present = array_map($normalise, preg_split('/\R/', $contents) ?: []);
+        $missing = array_values(array_filter(
+            self::GITIGNORE_ENTRIES,
+            static fn (string $entry): bool => ! in_array($normalise($entry), $present, true),
+        ));
 
         if ($missing === []) {
             $this->results[] = ['.gitignore', 'skipped (nothing to add)'];
@@ -309,22 +449,57 @@ final class InitCommand extends Command
             return;
         }
 
-        if (! Process::isTtySupported()) {
-            $this->results[] = [$label, 'skipped (no tty)'];
-            note("Run vendor/bin/testbench {$label} to compose the guidelines.");
-
-            return;
+        if (Process::isTtySupported()) {
+            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command], $this->root, timeout: null);
+            $process->setTty(true);
+            $process->run();
+        } else {
+            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command, '--no-interaction'], $this->root, timeout: null);
+            $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
         }
-
-        $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command], $this->root, timeout: null);
-        $process->setTty(true);
-        $process->run();
 
         if (! $process->isSuccessful()) {
             note("Boost's commands are only registered in a local environment. Add APP_ENV=local to the env section of testbench.yaml, then run vendor/bin/testbench {$label} yourself.");
         }
 
         $this->results[] = [$label, $process->isSuccessful() ? 'ran' : 'failed'];
+    }
+
+    private function registerGuideline(): void
+    {
+        $path = $this->root.'/boost.json';
+
+        if (! file_exists($path)) {
+            return;
+        }
+
+        $config = json_decode((string) @file_get_contents($path), true);
+
+        if (! is_array($config)) {
+            $this->results[] = ['boost.json', 'failed (unreadable)'];
+
+            return;
+        }
+
+        $packages = is_array($config['packages'] ?? null) ? $config['packages'] : [];
+
+        if (in_array('bambamboole/extended-testbench', $packages, true)) {
+            return;
+        }
+
+        $packages[] = 'bambamboole/extended-testbench';
+        $config['packages'] = $packages;
+
+        ksort($config);
+
+        if (@file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
+            $this->results[] = ['boost.json', 'failed'];
+
+            return;
+        }
+
+        $this->results[] = ['boost.json', 'registered guideline'];
+        note('Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md now.');
     }
 
     /** @return array<int, string> */
@@ -389,6 +564,13 @@ final class InitCommand extends Command
     private function write(string $path, string $stub, array $replacements = [], bool $onlyIfMissing = false): void
     {
         $target = $this->root.'/'.$path;
+
+        // A dangling symlink makes file_exists() report false, so onlyIfMissing would not trip and
+        // file_put_contents() would write through the link, creating whatever it pointed at.
+        if (is_link($target) && ! file_exists($target)) {
+            @unlink($target);
+        }
+
         $existed = file_exists($target);
 
         if ($existed) {
@@ -398,7 +580,11 @@ final class InitCommand extends Command
                 return;
             }
 
-            if (! confirm("Overwrite {$path}?", default: false)) {
+            $overwrite = $this->option('defaults') === true
+                ? false
+                : confirm("Overwrite {$path}?", default: false);
+
+            if (! $overwrite) {
                 $this->results[] = [$path, 'skipped'];
 
                 return;
@@ -418,6 +604,35 @@ final class InitCommand extends Command
         }
 
         $this->results[] = [$path, $existed ? 'overwritten' : 'written'];
+    }
+
+    /**
+     * Warns when a legacy config next to a generated `.dist` file shadows it — both PHPUnit and
+     * PHPStan prefer the non-`.dist` name, so the scaffold would be silently ignored. Policy is
+     * warn only: no rename, no prompt. The warning fires regardless of the write outcome, but the
+     * preceding write() already pushed a row for $distPath, so it's only rewritten in place (never
+     * a second row) and only when the write actually succeeded — a failed or skipped write keeps
+     * its true row, so the summary never claims a file was written when it was not.
+     */
+    private function warnIfShadowed(string $distPath): void
+    {
+        $legacy = str_replace('.dist', '', $distPath);
+
+        if (! file_exists($this->root.'/'.$legacy)) {
+            return;
+        }
+
+        warning("{$legacy} already exists and takes precedence over {$distPath}, so the generated file will be ignored. Rename it with `git mv {$legacy} {$distPath}` if you want the scaffold to apply.");
+
+        $last = array_key_last($this->results);
+
+        if ($last === null || $this->results[$last][0] !== $distPath) {
+            return;
+        }
+
+        if (in_array($this->results[$last][1], ['written', 'overwritten'], true)) {
+            $this->results[$last] = [$distPath, "written (shadowed by {$legacy})"];
+        }
     }
 
     /** @param  array<string, string>  $replacements */

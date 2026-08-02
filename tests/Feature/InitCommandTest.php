@@ -78,7 +78,6 @@ it('scaffolds the pest baseline when everything else is declined', function () {
 
     expect($phpunit)->toContain('<env name="DB_CONNECTION" value="sqlite"/>')
         ->toContain('<env name="DB_DATABASE" value=":memory:"/>')
-        ->toContain('value="base64:')
         ->not->toContain('name="Browser"');
 
     expect(file_get_contents($this->root.'/tests/TestCase.php'))
@@ -130,6 +129,18 @@ it('leaves an existing artisan entrypoint alone', function () {
     expect(file_get_contents($this->root.'/artisan'))->toBe("<?php // custom entrypoint\n");
 });
 
+it('writes a gitattributes that keeps development files out of the dist archive', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/.gitattributes'))
+        ->toContain('/tests export-ignore')
+        ->toContain('/workbench export-ignore')
+        ->toContain('/.ai export-ignore');
+});
+
 it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit does not fail to boot', function () {
     bindInit($this->root);
 
@@ -163,6 +174,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitattributes', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
@@ -172,6 +184,10 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
@@ -194,6 +210,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitattributes', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
@@ -203,6 +220,10 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
@@ -280,6 +301,7 @@ it('reports failure and records it in the summary when a composer install fails'
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitattributes', 'written'],
             ['.gitignore', 'written'],
             ['pestphp/pest:^5.0', 'failed'],
             ['pestphp/pest-plugin-laravel:^5.0', 'failed'],
@@ -291,6 +313,10 @@ it('reports failure and records it in the summary when a composer install fails'
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->expectsPromptsError('Failed to install: pestphp/pest:^5.0, pestphp/pest-plugin-laravel:^5.0')
@@ -319,7 +345,8 @@ it('scaffolds browser tests when accepted', function () {
         ->toContain('<directory>tests/Browser</directory>');
 
     expect(file_get_contents($this->root.'/tests/Pest.php'))
-        ->toContain("->in('Feature', 'Unit', 'Browser');");
+        ->toContain("->in('Feature', 'Unit');")
+        ->toContain("uses(\\Tests\\BrowserTestCase::class)->in('Browser');");
 
     expect(file_get_contents($this->root.'/tests/Browser/DummyTest.php'))
         ->toContain("visit('/dummy')");
@@ -351,6 +378,32 @@ it('appends the browser suite to an existing Pest.php', function () {
     expect(substr_count($pest, "in('Browser')"))->toBe(1);
 });
 
+it('warns instead of silently keeping a 0.2.0-era Browser mapping to the base TestCase', function () {
+    mkdir($this->root.'/tests', 0755, true);
+    file_put_contents(
+        $this->root.'/tests/Pest.php',
+        "<?php\n\ndeclare(strict_types=1);\n\nuses(\\Tests\\TestCase::class)->in('Feature', 'Unit', 'Browser');\n",
+    );
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--defaults' => true,
+    ])
+        ->expectsOutputToContain("tests/Pest.php already maps 'Browser' to the base TestCase")
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/BrowserTestCase.php')->toBeFile();
+
+    $pest = (string) file_get_contents($this->root.'/tests/Pest.php');
+
+    expect($pest)->toBe("<?php\n\ndeclare(strict_types=1);\n\nuses(\\Tests\\TestCase::class)->in('Feature', 'Unit', 'Browser');\n")
+        ->and($pest)->not->toContain('BrowserTestCase');
+});
+
 it('does not scaffold browser tests when declined', function () {
     bindInit($this->root);
 
@@ -363,6 +416,38 @@ it('does not scaffold browser tests when declined', function () {
         ->assertSuccessful();
 
     expect($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
+it('writes a browser test case that guards the vite manifest', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--defaults' => true,
+    ])->assertSuccessful();
+
+    expect($this->root.'/tests/BrowserTestCase.php')->toBeFile();
+
+    $testCase = (string) file_get_contents($this->root.'/tests/BrowserTestCase.php');
+
+    expect($testCase)->toContain('namespace Tests;')
+        ->toContain('abstract class BrowserTestCase extends TestCase')
+        ->toContain('vite.config')
+        ->toContain('manifest.json');
+
+    expect(file_get_contents($this->root.'/tests/Pest.php'))
+        ->toContain("uses(\\Tests\\BrowserTestCase::class)->in('Browser');");
+});
+
+it('does not write a browser test case when browser tests are declined', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/BrowserTestCase.php')->not->toBeFile();
 });
 
 it('scaffolds phpstan when accepted', function () {
@@ -432,6 +517,16 @@ it('scaffolds rector and pint when accepted', function () {
         ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
 });
 
+it('skips the rector rule that strips reflection-resolved laravel parameters', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/rector.php'))
+        ->toContain('RemoveUnusedPublicMethodParameterRector');
+});
+
 it('writes the gitignore entries that init and boost cause to exist', function () {
     bindInit($this->root);
 
@@ -494,7 +589,7 @@ it('composes a check script from the accepted tools', function () {
         'pint --test',
         'phpstan analyse',
         'rector --dry-run',
-        'pest',
+        '@test',
     ]);
 });
 
@@ -511,7 +606,7 @@ it('leaves the declined tools out of the check script', function () {
 
     $composerJson = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
 
-    expect($composerJson['scripts']['check'])->toBe(['pest']);
+    expect($composerJson['scripts']['check'])->toBe(['@test']);
 });
 
 it('adds the workbench block to testbench.yaml when a workbench app is accepted', function () {
@@ -566,6 +661,26 @@ it('leaves workbench/app out of the analysed paths when the package has none', f
         ->and(file_get_contents($this->root.'/rector.php'))->not->toContain('workbench');
 });
 
+it('analyses the database directory when the package has one', function () {
+    mkdir($this->root.'/database/factories', 0755, true);
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('- database');
+});
+
+it('leaves the database directory out when the package has none', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->not->toContain('database');
+});
+
 it('selects boost:install when the package has no boost.json', function () {
     bindInit($this->root);
 
@@ -592,4 +707,359 @@ it('selects boost:update --discover when the package already has boost.json', fu
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsOutputToContain('boost:update --discover')
         ->assertSuccessful();
+});
+
+it('refuses to run headless without flags', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true])->assertFailed();
+
+    expect($this->root.'/phpunit.xml.dist')->not->toBeFile()
+        ->and($this->root.'/artisan')->not->toBeFile();
+});
+
+it('runs headless with --defaults', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpunit.xml.dist')->toBeFile()
+        ->and($this->root.'/phpstan.neon.dist')->toBeFile()
+        ->and($this->root.'/rector.php')->toBeFile()
+        ->and($this->root.'/pint.json')->toBeFile()
+        ->and($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
+it('does not prompt at all when --defaults is passed without --no-interaction', function () {
+    // No expectsConfirmation()/expectsChoice() is scripted below on purpose: if resolve() or
+    // phpstanLevel() asked anything, Laravel's PendingCommand would fail on the unexpected
+    // prompt. Passing --defaults alone reaching assertSuccessful() is the proof.
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--defaults' => true])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpunit.xml.dist')->toBeFile()
+        ->and($this->root.'/phpstan.neon.dist')->toBeFile();
+});
+
+it('takes section flags over the defaults when headless', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--workbench' => true,
+        '--no-phpstan' => true,
+        '--no-rector' => true,
+        '--no-pint' => true,
+        '--phpstan-level' => '8',
+    ])->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/testbench.yaml'))->toContain('workbench:')
+        ->and($this->root.'/phpstan.neon.dist')->not->toBeFile()
+        ->and($this->root.'/rector.php')->not->toBeFile()
+        ->and($this->root.'/pint.json')->not->toBeFile();
+});
+
+it('writes the phpstan level given on the command line', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--phpstan' => true,
+        '--phpstan-level' => '8',
+        '--no-rector' => true,
+        '--no-pint' => true,
+    ])->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
+});
+
+it('refuses an invalid --phpstan-level before writing anything', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--defaults' => true,
+        '--phpstan-level' => '99',
+    ])->assertFailed();
+
+    expect($this->root.'/phpunit.xml.dist')->not->toBeFile()
+        ->and($this->root.'/artisan')->not->toBeFile();
+});
+
+it('warns when --playwright is passed but browser tests resolve false', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--defaults' => true,
+        '--playwright' => true,
+    ])
+        ->expectsOutputToContain('--playwright has no effect because browser tests resolved false')
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
+it('keeps the browser suite out of test and check', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--no-phpstan' => true,
+        '--no-rector' => true,
+        '--no-pint' => true,
+    ])->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['test'])->toBe('pest --testsuite=Unit,Feature')
+        ->and($scripts['test:browser'])->toBe('pest --testsuite=Browser')
+        ->and($scripts['check'])->toBe(['@test']);
+});
+
+it('writes a plain test script when browser tests are declined', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['test'])->toBe('pest')
+        ->and($scripts)->not->toHaveKey('test:browser')
+        ->and($scripts['check'])->toBe(['pint --test', 'phpstan analyse', 'rector --dry-run', '@test']);
+});
+
+it('builds assets before the browser suite when the package has a package.json', function () {
+    file_put_contents($this->root.'/package.json', '{"name":"acme"}');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--no-phpstan' => true,
+        '--no-rector' => true,
+        '--no-pint' => true,
+    ])->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['test:browser'])->toBe(['npm run build', 'pest --testsuite=Browser']);
+});
+
+it('scaffolds the testbench autoload hooks and a guarded boost refresh', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
+
+    expect($scripts['post-autoload-dump'])->toBe([
+        '@php vendor/bin/testbench package:purge-skeleton --ansi',
+        '@php vendor/bin/testbench package:discover --ansi',
+    ])
+        ->and($scripts['post-install-cmd'])->toBe(['@boost:refresh'])
+        ->and($scripts['post-update-cmd'])->toBe(['@boost:refresh'])
+        ->and($scripts['boost:refresh'])->toBe(
+            '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true',
+        );
+});
+
+it('treats gitignore entries as equivalent regardless of a leading slash', function () {
+    file_put_contents($this->root.'/.gitignore', "vendor/\ncomposer.lock\n.phpunit.cache/\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $gitignore = (string) file_get_contents($this->root.'/.gitignore');
+
+    expect(substr_count($gitignore, 'composer.lock'))->toBe(1)
+        ->and(substr_count($gitignore, 'vendor/'))->toBe(1)
+        ->and(substr_count($gitignore, '.phpunit.cache/'))->toBe(1)
+        ->and($gitignore)->toContain('/.junie/');
+});
+
+it('registers itself in the boost.json packages key', function () {
+    file_put_contents($this->root.'/boost.json', json_encode(['guidelines' => true], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench'])
+        ->and($boost['guidelines'])->toBeTrue();
+});
+
+it('does not duplicate itself in an existing packages key', function () {
+    file_put_contents($this->root.'/boost.json', json_encode([
+        'guidelines' => true,
+        'packages' => ['bambamboole/extended-testbench', 'acme/other'],
+    ], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench', 'acme/other']);
+});
+
+it('treats a malformed packages key as empty instead of throwing', function () {
+    file_put_contents($this->root.'/boost.json', json_encode([
+        'guidelines' => true,
+        'packages' => 'foo',
+    ], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench']);
+});
+
+it('records boost.json as failed (unreadable) instead of silently skipping unparseable json', function () {
+    file_put_contents($this->root.'/boost.json', '{not valid json');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('failed (unreadable)')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/boost.json'))->toBe('{not valid json');
+});
+
+it('keeps boost.json keys sorted the way Boost\'s own writer does after registering the guideline', function () {
+    file_put_contents($this->root.'/boost.json', json_encode([
+        'guidelines' => true,
+        'agents' => ['claude'],
+    ], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect(array_keys($boost))->toBe(['agents', 'guidelines', 'packages']);
+});
+
+it('tells the user to rerun boost:update after registering the guideline', function () {
+    file_put_contents($this->root.'/boost.json', json_encode(['guidelines' => true], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('Run vendor/bin/testbench boost:update to compose this guideline')
+        ->assertSuccessful();
+});
+
+it('does not bake an app key into the generated phpunit config', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpunit.xml.dist'))->not->toContain('APP_KEY');
+});
+
+it('warns when a legacy phpunit.xml will shadow the generated dist config', function () {
+    file_put_contents($this->root.'/phpunit.xml', '<phpunit/>');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('phpunit.xml already exists and takes precedence over phpunit.xml.dist')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>')
+        ->and($this->root.'/phpunit.xml.dist')->toBeFile();
+});
+
+it('warns when artisan is still a symlink instead of the shim', function () {
+    // Points at composer.json (already written in beforeEach) rather than vendor/bin/testbench so
+    // the symlink resolves to a real file — a *non-dangling* symlink, deliberately, since a dangling
+    // one is now replaced instead of warned about (see the "dangling artisan symlink" test below).
+    symlink('composer.json', $this->root.'/artisan');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('symlink')
+        ->assertSuccessful();
+
+    expect(is_link($this->root.'/artisan'))->toBeTrue();
+});
+
+it('replaces a dangling artisan symlink instead of writing through it', function () {
+    symlink($this->root.'/does-not-exist', $this->root.'/artisan');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(is_link($this->root.'/artisan'))->toBeFalse()
+        ->and(file_get_contents($this->root.'/artisan'))->toContain("require __DIR__.'/vendor/bin/testbench';");
+});
+
+it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy phpunit.xml also shadows it', function () {
+    // A directory at the dist target makes file_put_contents() fail deterministically: file_exists()
+    // treats it as already there (so the overwrite prompt fires), but writing to a directory path
+    // always fails, regardless of the runner's UID. This is the same "block with a real filesystem
+    // entry" trick the "records a failed outcome" test above uses for tests/Unit and tests/Feature.
+    file_put_contents($this->root.'/phpunit.xml', '<phpunit/>');
+    mkdir($this->root.'/phpunit.xml.dist', 0755, true);
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'yes')
+        ->expectsOutputToContain('phpunit.xml already exists and takes precedence over phpunit.xml.dist')
+        ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
+            ['.gitattributes', 'written'],
+            ['.gitignore', 'written'],
+            ['tests/Unit/.gitkeep', 'written'],
+            ['tests/Feature/.gitkeep', 'written'],
+            ['phpunit.xml.dist', 'failed'],
+            ['tests/TestCase.php', 'written'],
+            ['tests/Pest.php', 'written'],
+            ['testbench.yaml', 'written'],
+            ['composer script: test', 'added'],
+            ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
+        ])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpunit.xml.dist')->toBeDirectory()
+        ->and(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>');
 });

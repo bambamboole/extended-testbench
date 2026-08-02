@@ -7,4 +7,4 @@ parameters:
     level: {{ level }}
     paths:
         - src
-        - tests{{ workbench_path }}
+        - tests{{ workbench_path }}{{ database_path }}
