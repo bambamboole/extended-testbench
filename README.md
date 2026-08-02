@@ -43,7 +43,9 @@ Installs Pest 5 and writes `phpunit.xml.dist` (sqlite `:memory:`), `tests/TestCa
 (`pest-plugin-browser`, a dummy test, and a `Browser` suite appended to `tests/Pest.php`), PHPStan
 (Larastan + the Pest PHPStan extension, writing `phpstan.neon.dist` plus a `stan` composer script),
 Rector (`rector.php` plus a `refactor` script) and Pint (`pint.json` plus a `lint` script). Existing
-files are never replaced without asking.
+files are never replaced without asking. It finishes by running `boost:install` (or `boost:update
+--discover` when Boost is already set up) so the guidelines land in your `CLAUDE.md` / `AGENTS.md`
+without a second step.
 
 Requires PHP 8.4+ and `orchestra/testbench ^11`. Pest 5 needs PHPUnit 13 and `symfony/process ^8.1`;
 testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`, so only testbench 11

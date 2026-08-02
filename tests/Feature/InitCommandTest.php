@@ -133,6 +133,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['tests/Pest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
 });
@@ -159,6 +160,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['tests/Pest.php', 'failed'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
 
@@ -238,6 +240,7 @@ it('reports failure and records it in the summary when a composer install fails'
             ['tests/Pest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->expectsPromptsError('Failed to install: pestphp/pest:^5.0')
         ->assertFailed();
@@ -370,4 +373,30 @@ it('scaffolds rector and pint when accepted', function () {
 
     expect($composerJson['scripts']['refactor'])->toBe('rector')
         ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
+});
+
+it('runs boost:install when the package has no boost.json', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsOutputToContain('boost:install')
+        ->assertSuccessful();
+});
+
+it('runs boost:update --discover when the package already has boost.json', function () {
+    file_put_contents($this->root.'/boost.json', '{"guidelines":true}');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsOutputToContain('boost:update --discover')
+        ->assertSuccessful();
 });

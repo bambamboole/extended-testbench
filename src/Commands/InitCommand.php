@@ -11,6 +11,7 @@ use Symfony\Component\Process\Process;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
@@ -84,6 +85,8 @@ final class InitCommand extends Command
         if ($this->autoloadChanged) {
             $this->composer->dumpAutoloads();
         }
+
+        $this->boost();
 
         table(['File', 'Result'], $this->results);
 
@@ -190,6 +193,40 @@ final class InitCommand extends Command
         $this->write('pint.json', 'pint.json.stub');
 
         $this->script('lint', 'pint --format agent');
+    }
+
+    private function boost(): void
+    {
+        $command = $this->boostCommand();
+        $label = implode(' ', $command);
+
+        if (! is_file($this->root.'/vendor/bin/testbench')) {
+            $this->results[] = [$label, 'skipped (no vendor/bin/testbench)'];
+            note("Run vendor/bin/testbench {$label} to compose the guidelines.");
+
+            return;
+        }
+
+        if (! Process::isTtySupported()) {
+            $this->results[] = [$label, 'skipped (no tty)'];
+            note("Run vendor/bin/testbench {$label} to compose the guidelines.");
+
+            return;
+        }
+
+        $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command], $this->root, timeout: null);
+        $process->setTty(true);
+        $process->run();
+
+        $this->results[] = [$label, $process->isSuccessful() ? 'ran' : 'failed'];
+    }
+
+    /** @return array<int, string> */
+    private function boostCommand(): array
+    {
+        return file_exists($this->root.'/boost.json')
+            ? ['boost:update', '--discover']
+            : ['boost:install'];
     }
 
     private function testDirectory(string $path): void
