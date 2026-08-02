@@ -78,7 +78,6 @@ it('scaffolds the pest baseline when everything else is declined', function () {
 
     expect($phpunit)->toContain('<env name="DB_CONNECTION" value="sqlite"/>')
         ->toContain('<env name="DB_DATABASE" value=":memory:"/>')
-        ->toContain('value="base64:')
         ->not->toContain('name="Browser"');
 
     expect(file_get_contents($this->root.'/tests/TestCase.php'))
@@ -727,4 +726,59 @@ it('scaffolds the testbench autoload hooks and a guarded boost refresh', functio
         ->and($scripts['post-update-cmd'])->toBe(['@boost:refresh'])
         ->and($scripts['boost:refresh'])->toContain('[ -n "$CI" ]')
         ->and($scripts['boost:refresh'])->toContain('boost:update --no-interaction');
+});
+
+it('treats gitignore entries as equivalent regardless of a leading slash', function () {
+    file_put_contents($this->root.'/.gitignore', "vendor/\ncomposer.lock\n.phpunit.cache/\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $gitignore = (string) file_get_contents($this->root.'/.gitignore');
+
+    expect(substr_count($gitignore, 'composer.lock'))->toBe(1)
+        ->and(substr_count($gitignore, 'vendor/'))->toBe(1)
+        ->and(substr_count($gitignore, '.phpunit.cache/'))->toBe(1)
+        ->and($gitignore)->toContain('/.junie/');
+});
+
+it('registers itself in the boost.json packages key', function () {
+    file_put_contents($this->root.'/boost.json', json_encode(['guidelines' => true], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench'])
+        ->and($boost['guidelines'])->toBeTrue();
+});
+
+it('does not duplicate itself in an existing packages key', function () {
+    file_put_contents($this->root.'/boost.json', json_encode([
+        'guidelines' => true,
+        'packages' => ['bambamboole/extended-testbench', 'acme/other'],
+    ], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench', 'acme/other']);
+});
+
+it('does not bake an app key into the generated phpunit config', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpunit.xml.dist'))->not->toContain('APP_KEY');
 });

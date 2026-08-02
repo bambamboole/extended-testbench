@@ -158,6 +158,7 @@ final class InitCommand extends Command
         }
 
         $this->boost();
+        $this->registerGuideline();
 
         table(['File', 'Result'], $this->results);
 
@@ -213,7 +214,6 @@ final class InitCommand extends Command
         $this->testDirectory('tests/Feature');
 
         $this->write('phpunit.xml.dist', 'phpunit.xml.dist.stub', [
-            'app_key' => 'base64:'.base64_encode(random_bytes(32)),
             'browser_testsuite' => $browser ? self::BROWSER_TESTSUITE : '',
         ]);
 
@@ -337,8 +337,14 @@ final class InitCommand extends Command
     {
         $path = $this->root.'/.gitignore';
         $contents = file_exists($path) ? (string) @file_get_contents($path) : '';
-        $present = array_map(trim(...), preg_split('/\R/', $contents) ?: []);
-        $missing = array_values(array_diff(self::GITIGNORE_ENTRIES, $present));
+
+        $normalise = static fn (string $line): string => ltrim(trim($line), '/');
+
+        $present = array_map($normalise, preg_split('/\R/', $contents) ?: []);
+        $missing = array_values(array_filter(
+            self::GITIGNORE_ENTRIES,
+            static fn (string $entry): bool => ! in_array($normalise($entry), $present, true),
+        ));
 
         if ($missing === []) {
             $this->results[] = ['.gitignore', 'skipped (nothing to add)'];
@@ -392,6 +398,38 @@ final class InitCommand extends Command
         }
 
         $this->results[] = [$label, $process->isSuccessful() ? 'ran' : 'failed'];
+    }
+
+    private function registerGuideline(): void
+    {
+        $path = $this->root.'/boost.json';
+
+        if (! file_exists($path)) {
+            return;
+        }
+
+        $config = json_decode((string) @file_get_contents($path), true);
+
+        if (! is_array($config)) {
+            return;
+        }
+
+        $packages = $config['packages'] ?? [];
+
+        if (in_array('bambamboole/extended-testbench', $packages, true)) {
+            return;
+        }
+
+        $packages[] = 'bambamboole/extended-testbench';
+        $config['packages'] = $packages;
+
+        if (@file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
+            $this->results[] = ['boost.json', 'failed'];
+
+            return;
+        }
+
+        $this->results[] = ['boost.json', 'registered guideline'];
     }
 
     /** @return array<int, string> */
