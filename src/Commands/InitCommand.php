@@ -49,10 +49,14 @@ final class InitCommand extends Command
         '/.claude/skills/',
         '/.agents/',
         '/.junie/',
+        '/.codex/',
+        '/.superpowers/',
+        '/docs/superpowers/',
     ];
 
     protected $signature = 'package:init
         {--defaults : Accept every default without prompting}
+        {--force : Replace the generated config files instead of skipping the ones that exist}
         {--workbench : Scaffold a workbench app}
         {--no-workbench : Skip the workbench app}
         {--browser : Add browser tests}
@@ -403,7 +407,9 @@ final class InitCommand extends Command
         $path = $this->root.'/.gitignore';
         $contents = file_exists($path) ? (string) @file_get_contents($path) : '';
 
-        $normalise = static fn (string $line): string => ltrim(trim($line), '/');
+        // Both slashes go: git treats `vendor`, `/vendor` and `vendor/` as the same intent here, and
+        // keeping either one would append a duplicate entry next to the line already ignoring it.
+        $normalise = static fn (string $line): string => trim(trim($line), '/');
 
         $present = array_map($normalise, preg_split('/\R/', $contents) ?: []);
         $missing = array_values(array_filter(
@@ -580,12 +586,14 @@ final class InitCommand extends Command
                 return;
             }
 
-            $overwrite = $this->option('defaults') === true
-                ? false
-                : confirm("Overwrite {$path}?", default: false);
+            // Only the generated config files reach this branch; anything holding hand-written code
+            // is written with onlyIfMissing above and stays out of --force's reach. Without a real
+            // prompt the answer is no, so a headless run reports the skip instead of asking nobody.
+            $overwrite = $this->option('force') === true
+                || ($this->canPrompt() && confirm("Overwrite {$path}?", default: false));
 
             if (! $overwrite) {
-                $this->results[] = [$path, 'skipped'];
+                $this->results[] = [$path, 'skipped (exists, --force to replace)'];
 
                 return;
             }

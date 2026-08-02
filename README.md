@@ -46,8 +46,10 @@ vendor/bin/testbench package:init
 
 Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint, `.gitattributes`
 (development-only files marked `export-ignore` so they don't ship in the dist archive),
-`phpunit.xml.dist` (sqlite `:memory:`; no `APP_KEY` is generated — the Testbench skeleton already
-provides one), `tests/TestCase.php`, `tests/Pest.php` and `testbench.yaml` when they are missing,
+`phpunit.xml.dist` (sqlite `:memory:`, plus the Testbench skeleton's `APP_KEY` — the skeleton keeps
+that key in a `.env` that the `package:purge-skeleton` hook deletes on every autoload dump, so
+pinning it here is what keeps a cold suite from throwing `MissingAppKeyException`),
+`tests/TestCase.php`, `tests/Pest.php` and `testbench.yaml` when they are missing,
 plus the `.gitignore` entries for everything it and Boost generate. Then it asks about:
 
 - **a workbench app** — adds the `workbench:` block to `testbench.yaml` and hands the namespaces,
@@ -72,6 +74,18 @@ vendor/bin/testbench package:init --defaults
 answer the other way. Without a terminal and without any of these flags the command refuses to run
 rather than guessing — pass `--defaults` to take every default.
 
+Adopting the scaffold in a package that already has some of it is what `--force` is for:
+
+```bash
+vendor/bin/testbench package:init --defaults --force
+```
+
+Without it, an existing `phpunit.xml.dist`, `phpstan.neon.dist`, `rector.php` or `pint.json` is
+reported as `skipped (exists, --force to replace)` rather than being overwritten, which is the right
+default interactively but leaves a headless run with nothing written. `--force` covers only those
+four generated configs; `tests/TestCase.php`, `tests/Pest.php`, `testbench.yaml`, `artisan` and
+`.gitattributes` hold hand-written code and are never replaced, with or without the flag.
+
 `src`, `tests` and, when present, `workbench/app` are the paths both PHPStan and Rector analyse;
 PHPStan also adds `database` when the package has one. Rector's generated config skips the rule that
 strips unused parameters from public methods, since Laravel resolves many signatures — policy
@@ -86,7 +100,7 @@ script into `post-install-cmd` / `post-update-cmd`; `boost:refresh` reruns
 `vendor/bin/testbench` exists, or before Boost has been set up (`boost.json` present), and never
 fails the surrounding `composer install`/`update` even if that rerun does.
 
-Existing files are never replaced without asking; a legacy `phpunit.xml` or `phpstan.neon` that would
+Existing files are never replaced without asking or `--force`; a legacy `phpunit.xml` or `phpstan.neon` that would
 shadow the generated `.dist` file, or an `artisan` that's still a symlink rather than the committed
 shim, only gets a warning, never rewritten automatically. It finishes by running `boost:install` (or
 `boost:update --discover` when Boost is already set up) and registering itself in `boost.json`'s
