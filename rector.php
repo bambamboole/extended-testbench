@@ -10,7 +10,8 @@ return RectorConfig::configure()
     ->withPhpSets()
     ->withPreparedSets(deadCode: true, codeQuality: true, typeDeclarations: true)
     ->withSkip([
-        // Untyped Pest closures (it/test/beforeEach/afterEach) are the house style here;
-        // typing every test callback is churn that adds no safety in a test suite.
-        AddClosureVoidReturnTypeWhereNoReturnRector::class,
+        // Untyped Pest closures (it/test/beforeEach/afterEach) are the house style in
+        // tests/; typing every test callback is churn that adds no safety in a test suite.
+        // Scoped to tests/ only — src/ keeps the rule for any future untyped closure.
+        AddClosureVoidReturnTypeWhereNoReturnRector::class => [__DIR__.'/tests'],
     ]);
