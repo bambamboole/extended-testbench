@@ -38,28 +38,70 @@ it('yields Failed when the command exits unsuccessfully', function () {
     expect($result->status)->toBe(Status::Failed);
 });
 
-it('runs the full command array verbatim, without assuming any prefix', function () {
-    // Proves the "caller decides the full command" contract from the brief: a non-testbench
-    // command (like playwright's `npx playwright install`) works exactly like a testbench one —
-    // ProcessStep never prepends PHP_BINARY or vendor/bin/testbench itself.
+it('runs the given command array verbatim, without assuming any prefix', function () {
+    // Proves the "caller decides the full command" contract from the brief: a genuinely non-PHP
+    // argv (not PHP_BINARY-prefixed) still runs untouched — ProcessStep never prepends PHP_BINARY
+    // or vendor/bin/testbench itself. Using a PHP_BINARY-based command here would pass even if
+    // ProcessStep secretly prepended PHP_BINARY, which proves nothing.
     $context = makeContext();
-    $result = first(new ProcessStep('npx playwright install', [PHP_BINARY, '-r', 'echo "npx playwright install";'])->apply($context));
+    $result = first(new ProcessStep('npx playwright install', ['/bin/echo', 'npx playwright install'])->apply($context));
 
     expect($result->status)->toBe(Status::Ran);
 
     /** @var BufferedOutput $output */
     $output = $context->output();
 
-    expect($output->fetch())->toBe('npx playwright install');
+    expect($output->fetch())->toBe("npx playwright install\n");
 });
 
-it('uses a tty without an output callback when tty is requested and supported', function () {
+it('overrides the default "ran" detail with the given ranDetail on success', function () {
+    $context = makeContext();
+    $result = first(new ProcessStep('boost:update', [PHP_BINARY, '-r', 'echo "ok";'], ranDetail: 'composed guideline')->apply($context));
+
+    expect($result->status)->toBe(Status::Ran)
+        ->and($result->describe())->toBe('composed guideline');
+});
+
+it('ignores ranDetail and reports the plain Failed status when the command fails', function () {
+    $context = makeContext();
+    $result = first(new ProcessStep('boost:update', [PHP_BINARY, '-r', 'exit(1);'], ranDetail: 'composed guideline')->apply($context));
+
+    expect($result->status)->toBe(Status::Failed)
+        ->and($result->describe())->toBe('failed');
+});
+
+it('ignores ttyCommand and runs the plain command through the callback when no TTY is available', function () {
+    // This environment (test runner, CI) has no attached TTY, so Process::isTtySupported() is
+    // false here regardless of platform — exercising the "ttyCommand given but unused" branch
+    // without needing a real terminal.
+    expect(Process::isTtySupported())->toBeFalse();
+
+    $context = makeContext();
+    $result = first(new ProcessStep(
+        'boost:install',
+        [PHP_BINARY, '-r', 'echo "no-tty";'],
+        ttyCommand: [PHP_BINARY, '-r', 'echo "tty";'],
+    )->apply($context));
+
+    expect($result->status)->toBe(Status::Ran);
+
+    /** @var BufferedOutput $output */
+    $output = $context->output();
+
+    expect($output->fetch())->toBe('no-tty');
+});
+
+it('uses the ttyCommand without an output callback when tty is requested and supported', function () {
     if (! Process::isTtySupported()) {
         $this->markTestSkipped('No TTY support in this environment.');
     }
 
     $context = makeContext();
-    $result = first(new ProcessStep('boost:install', [PHP_BINARY, '-r', 'echo "tty";'], tty: true)->apply($context));
+    $result = first(new ProcessStep(
+        'boost:install',
+        [PHP_BINARY, '-r', 'echo "no-tty";'],
+        ttyCommand: [PHP_BINARY, '-r', 'echo "tty";'],
+    )->apply($context));
 
     expect($result->status)->toBe(Status::Ran);
 
