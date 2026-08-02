@@ -47,9 +47,9 @@ files are never replaced without asking. It finishes by running `boost:install` 
 --discover` when Boost is already set up) so the guidelines land in your `CLAUDE.md` / `AGENTS.md`
 without a second step.
 
-Requires PHP 8.4+ and `orchestra/testbench ^11`. Pest 5 needs PHPUnit 13 and `symfony/process ^8.1`;
-testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`, so only testbench 11
-(Laravel 13) resolves. `pest-plugin-browser` additionally requires `ext-sockets`.
+What `package:init` scaffolds requires PHP 8.4+ and `orchestra/testbench ^11`: Pest 5 needs PHPUnit 13
+and `symfony/process ^8.1`; testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`,
+so only testbench 11 (Laravel 13) resolves. `pest-plugin-browser` additionally requires `ext-sockets`.
 
 ## Shipped guidelines
 
@@ -65,7 +65,9 @@ pick it up once with:
 vendor/bin/testbench boost:update --discover
 ```
 
-Edit or override anything by adding your own files to `.ai/guidelines/` in your package.
+Adding your own files to `.ai/guidelines/` in your package extends the set — a same-named file does not
+replace ours, both get composed into your `CLAUDE.md` / `AGENTS.md`. To drop ours entirely, deselect
+this package when running `boost:install`, or remove it from the `packages` key in `boost.json`.
 
 ## How it works
 
@@ -83,6 +85,10 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
 - Windows: if symlink creation fails, create the entrypoint manually with
   `mklink artisan vendor\bin\testbench` (cmd, may need admin rights or developer mode),
   or use `ln -s vendor/bin/testbench artisan` from Git Bash/WSL.
+- Windows: on a checkout without `core.symlinks` enabled, the tracked `.ai/guidelines/core.blade.php`
+  becomes a small text file containing its target path instead of a symlink, and `vendor/bin/pest`
+  fails loudly on it. Enable symlinks (`git config core.symlinks true` and re-clone) or recreate the
+  symlink by hand.
 - The package is developed and tested against `orchestra/testbench ^11` with Pest 5 on PHP 8.4. The
   bridge itself has no testbench constraint of its own, so it still works on testbench 9 and 10 —
   that is simply not covered by the test suite.
