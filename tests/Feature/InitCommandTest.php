@@ -547,7 +547,29 @@ it('writes the gitignore entries that init and boost cause to exist', function (
         ->toContain('/.claude/skills/')
         ->toContain('/.agents/')
         ->toContain('/.junie/')
+        ->toContain('/.codex/')
+        ->toContain('/.superpowers/')
+        ->toContain('/docs/superpowers/')
         ->not->toContain('/artisan');
+});
+
+it('ignores every agent planning artifact the shipped guideline names', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $gitignore = (string) file_get_contents($this->root.'/.gitignore');
+    $guideline = (string) file_get_contents(__DIR__.'/../../resources/boost/guidelines/core.blade.php');
+
+    preg_match('/Never commit agent planning artifacts\.[^\n]+/', $guideline, $matches);
+    preg_match_all('/`([^`]+)`/', $matches[0] ?? '', $artifacts);
+
+    expect($artifacts[1])->not->toBeEmpty();
+
+    foreach ($artifacts[1] as $artifact) {
+        expect($gitignore)->toContain(trim($artifact, '/'));
+    }
 });
 
 it('appends only the gitignore entries that are missing', function () {
@@ -889,6 +911,22 @@ it('treats gitignore entries as equivalent regardless of a leading slash', funct
         ->and($gitignore)->toContain('/.junie/');
 });
 
+it('treats gitignore entries as equivalent regardless of a trailing slash', function () {
+    file_put_contents($this->root.'/.gitignore', "vendor\n.phpunit.cache\n.agents\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $gitignore = (string) file_get_contents($this->root.'/.gitignore');
+
+    expect(substr_count($gitignore, 'vendor'))->toBe(1)
+        ->and(substr_count($gitignore, '.phpunit.cache'))->toBe(1)
+        ->and(substr_count($gitignore, '.agents'))->toBe(1)
+        ->and($gitignore)->toStartWith("vendor\n.phpunit.cache\n.agents\n");
+});
+
 it('registers itself in the boost.json packages key', function () {
     file_put_contents($this->root.'/boost.json', json_encode(['guidelines' => true], JSON_PRETTY_PRINT));
 
@@ -973,13 +1011,69 @@ it('tells the user to rerun boost:update after registering the guideline', funct
         ->assertSuccessful();
 });
 
-it('does not bake an app key into the generated phpunit config', function () {
+/**
+ * The skeleton's own .env carries this key, but the post-autoload-dump hook this command writes runs
+ * package:purge-skeleton, which deletes that file — and Testbench's EnsuresDefaultConfiguration
+ * fallback does not actually land (it hands Repository::set() a list of arrays), so app.key ends up
+ * null and anything touching the encrypter throws MissingAppKeyException on a cold suite.
+ */
+it('bakes the skeleton app key into the generated phpunit config', function () {
     bindInit($this->root);
 
     $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
         ->assertSuccessful();
 
-    expect(file_get_contents($this->root.'/phpunit.xml.dist'))->not->toContain('APP_KEY');
+    expect(file_get_contents($this->root.'/phpunit.xml.dist'))
+        ->toContain('<env name="APP_KEY" value="AckfSECXIvnK5r28GVIWUAxmbBSjTsmF"/>');
+});
+
+it('skips existing generated configs and says how to replace them', function () {
+    foreach (['phpunit.xml.dist', 'phpstan.neon.dist', 'rector.php', 'pint.json'] as $file) {
+        file_put_contents($this->root.'/'.$file, 'mine');
+    }
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('--force to replace')
+        ->assertSuccessful();
+
+    foreach (['phpunit.xml.dist', 'phpstan.neon.dist', 'rector.php', 'pint.json'] as $file) {
+        expect(file_get_contents($this->root.'/'.$file))->toBe('mine');
+    }
+});
+
+it('replaces existing generated configs when --force is passed', function () {
+    foreach (['phpunit.xml.dist', 'phpstan.neon.dist', 'rector.php', 'pint.json'] as $file) {
+        file_put_contents($this->root.'/'.$file, 'mine');
+    }
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true, '--force' => true])
+        ->expectsOutputToContain('overwritten')
+        ->assertSuccessful();
+
+    foreach (['phpunit.xml.dist', 'phpstan.neon.dist', 'rector.php', 'pint.json'] as $file) {
+        expect(file_get_contents($this->root.'/'.$file))->not->toBe('mine');
+    }
+});
+
+it('never lets --force overwrite the files that hold hand-written code', function () {
+    mkdir($this->root.'/tests', 0755, true);
+
+    foreach (['tests/TestCase.php', 'tests/Pest.php', 'testbench.yaml', 'artisan', '.gitattributes'] as $file) {
+        file_put_contents($this->root.'/'.$file, 'mine');
+    }
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true, '--force' => true])
+        ->assertSuccessful();
+
+    foreach (['tests/TestCase.php', 'tests/Pest.php', 'testbench.yaml', 'artisan', '.gitattributes'] as $file) {
+        expect(file_get_contents($this->root.'/'.$file))->toBe('mine');
+    }
 });
 
 it('warns when a legacy phpunit.xml will shadow the generated dist config', function () {
