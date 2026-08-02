@@ -60,6 +60,8 @@ final class InitCommand extends Command
         $rector = confirm('Add Rector?', default: true);
         $pint = confirm('Add Pint?', default: true);
 
+        $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+
         $this->pest($browser);
 
         if ($browser) {

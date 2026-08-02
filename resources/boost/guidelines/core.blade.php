@@ -18,7 +18,7 @@
 ## Package development under Testbench
 
 - This package is developed with Orchestra Testbench, not a full Laravel app. There is no application skeleton in the repository.
-- Run artisan commands with `vendor/bin/testbench <command>`. An `artisan` symlink to `vendor/bin/testbench` is created the first time a `boost:*` or `mcp:*` command runs, after which `php artisan <command>` is equivalent; if it is missing, create it with `ln -s vendor/bin/testbench artisan`.
+- `artisan` in the package root is a one-line shim that requires `vendor/bin/testbench`, so `php artisan <command>` and `vendor/bin/testbench <command>` are equivalent — both boot the Testbench skeleton with this package's service provider registered. If `artisan` is missing, `vendor/bin/testbench` always works, and a `boost:*` or `mcp:*` command recreates the shim.
 - `base_path()` points at the Testbench skeleton (`vendor/orchestra/testbench-core/laravel`), not at the package root, so never reach package files through it — use `Orchestra\Testbench\package_path()`. The one exception is `boost:*` and `mcp:*` commands, where this package deliberately rebases `base_path()` to the package root so Boost writes into the repository; nothing else should rely on that.
 - Configuration for the test application lives in `testbench.yaml`.
 - Extra app code for tests belongs in `workbench/`, which requires `Workbench\App\` and `Workbench\Database\Factories\` `autoload-dev` psr-4 entries, plus a `workbench:` block in `testbench.yaml` for providers and routes. If the package has neither, keep test-only app code under `tests/`.

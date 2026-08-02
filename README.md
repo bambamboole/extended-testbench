@@ -29,8 +29,10 @@ vendor/bin/testbench boost:update --no-interaction
 
 Everything lands in your package repo: `CLAUDE.md` / `AGENTS.md`, `boost.json`, `.ai/`,
 agent skill directories. Roster scans your real `composer.lock`, so package-specific
-guidelines, `search-docs`, and `application-info` work. An `artisan -> vendor/bin/testbench`
-symlink is created so the generated MCP config (`php artisan boost:mcp`) works verbatim.
+guidelines, `search-docs`, and `application-info` work. An `artisan` entrypoint — a one-line
+shim that requires `vendor/bin/testbench` — is created so the generated MCP config
+(`php artisan boost:mcp`) works verbatim. Commit it; Boost hardcodes the `artisan` script name
+in its MCP config, its tool subprocesses, and its guideline text.
 
 ## Scaffold a package
 
@@ -54,7 +56,7 @@ so only testbench 11 (Laravel 13) resolves. `pest-plugin-browser` additionally r
 ## Shipped guidelines
 
 This package publishes one Boost guideline covering comments, git and pull request conventions, and
-the Testbench-specific facts agents get wrong (`artisan` is a symlink, `base_path()` is the skeleton
+the Testbench-specific facts agents get wrong (`artisan` is a shim, `base_path()` is the skeleton
 and not your package). Boost discovers it automatically and composes it into your `CLAUDE.md` /
 `AGENTS.md` under a `bambamboole/extended-testbench rules` heading.
 
@@ -82,9 +84,8 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
   are missing, add `APP_ENV=local` to the `env` section of your `testbench.yaml`.
 - Database-backed MCP tools run against the Testbench skeleton app — configure connections
   via your workbench setup as usual.
-- Windows: if symlink creation fails, create the entrypoint manually with
-  `mklink artisan vendor\bin\testbench` (cmd, may need admin rights or developer mode),
-  or use `ln -s vendor/bin/testbench artisan` from Git Bash/WSL.
+- The `artisan` entrypoint is a plain PHP file, not a symlink, so it needs no special handling on
+  Windows and survives a fresh clone once committed.
 - Windows: on a checkout without `core.symlinks` enabled, the tracked `.ai/guidelines/core.blade.php`
   becomes a small text file containing its target path instead of a symlink, and `vendor/bin/pest`
   fails loudly on it. Enable symlinks (`git config core.symlinks true` and re-clone) or recreate the

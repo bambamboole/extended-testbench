@@ -98,6 +98,35 @@ it('scaffolds the pest baseline when everything else is declined', function () {
         ->and($composerJson['scripts'])->not->toHaveKeys(['stan', 'refactor', 'lint']);
 });
 
+it('writes an artisan entrypoint that requires vendor/bin/testbench', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect($this->root.'/artisan')->toBeFile()
+        ->and(file_get_contents($this->root.'/artisan'))->toContain("require __DIR__.'/vendor/bin/testbench';");
+});
+
+it('leaves an existing artisan entrypoint alone', function () {
+    file_put_contents($this->root.'/artisan', "<?php // custom entrypoint\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/artisan'))->toBe("<?php // custom entrypoint\n");
+});
+
 it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit does not fail to boot', function () {
     bindInit($this->root);
 
@@ -128,6 +157,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
             ['phpunit.xml.dist', 'written'],
@@ -155,6 +185,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
             ['phpunit.xml.dist', 'written'],
@@ -234,6 +265,7 @@ it('reports failure and records it in the summary when a composer install fails'
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
             ['pestphp/pest:^5.0', 'failed'],
             ['tests/Unit/.gitkeep', 'written'],
             ['tests/Feature/.gitkeep', 'written'],
