@@ -38,9 +38,14 @@ final readonly class ArtisanShim implements Artifact
             return;
         }
 
-        yield from $this->stub->drift($context);
+        // Drained eagerly, and the trailing warning fired, before anything is yielded: a caller
+        // that only pulls the first result (as first() does) must still see the warning, the same
+        // way StubFile fires its shadow warning inside result() before yielding, rather than after.
+        $results = iterator_to_array($this->stub->drift($context), false);
 
         $this->warnIfStillSymlinked($context);
+
+        yield from $results;
     }
 
     /** @return iterable<Result> */
@@ -51,9 +56,11 @@ final readonly class ArtisanShim implements Artifact
             $context->note('artisan was a symlink to vendor/bin/testbench; replacing it with the committed shim, which survives a fresh clone and works on Windows.');
         }
 
-        yield from $this->stub->apply($context);
+        $results = iterator_to_array($this->stub->apply($context), false);
 
         $this->warnIfStillSymlinked($context);
+
+        yield from $results;
     }
 
     private function symlinkedToTestbench(Context $context): bool

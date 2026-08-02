@@ -99,6 +99,24 @@ it('leaves a symlink to something else alone and warns, yielding the stub skippe
         ->toContain('artisan is a symlink to something other than vendor/bin/testbench, so it was left alone. Replace it with `rm artisan` and rerun if you want the committed shim.');
 });
 
+it('still warns when the consumer only pulls the first result, like first() does', function () {
+    // Regression guard: warnIfStillSymlinked() used to run after `yield from`, so a consumer that
+    // stops after the first result (first() does exactly this, and four tests above use it) never
+    // reached it and the warning was silently lost. The fix drains the wrapped StubFile eagerly and
+    // warns before yielding anything, matching how StubFile itself fires its shadow warning inside
+    // result() before yielding.
+    $context = makeContext();
+    Prompt::setOutput($context->output());
+    file_put_contents($context->path('elsewhere.php'), "<?php // mine\n");
+    symlink($context->path('elsewhere.php'), $context->path('artisan'));
+
+    $result = first(new ArtisanShim()->apply($context));
+
+    expect($result->status)->toBe(Status::Skipped)
+        ->and(fetchArtisanOutput($context))
+        ->toContain('artisan is a symlink to something other than vendor/bin/testbench, so it was left alone. Replace it with `rm artisan` and rerun if you want the committed shim.');
+});
+
 it('warns on the same still-a-symlink case under drift, without touching the filesystem', function () {
     $context = makeContext();
     Prompt::setOutput($context->output());
