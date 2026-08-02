@@ -73,6 +73,23 @@ it('runs the command through vendor/bin/testbench, appending --no-interaction wh
         ->and(fetchBoostRunOutput($context))->toBe('boost:update --discover --no-interaction');
 });
 
+it('drops --no-interaction and runs via the tty command when a tty is available', function () {
+    if (! Process::isTtySupported()) {
+        $this->markTestSkipped('No TTY support in this environment.');
+    }
+
+    $context = makeContext();
+    mkdir($context->path('vendor/bin'), 0755, true);
+    file_put_contents($context->path('vendor/bin/testbench'), "<?php\n");
+
+    $result = first(new BoostRun(['boost:install'])->apply($context));
+
+    expect($result->status)->toBe(Status::Ran)
+        // No output callback is wired for a tty run, so the buffered context output stays empty —
+        // the same assertion ProcessStepTest makes for its own tty branch, which this inherits.
+        ->and(fetchBoostRunOutput($context))->toBe('');
+});
+
 it('yields Failed and notes APP_ENV=local when the run exits unsuccessfully', function () {
     $context = makeContext();
     Prompt::setOutput($context->output());

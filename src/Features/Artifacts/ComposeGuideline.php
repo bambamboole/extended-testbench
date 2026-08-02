@@ -16,17 +16,21 @@ use Bambamboole\ExtendedTestbench\Features\Status;
  *
  * A Feature cannot branch between artifacts on BoostRegistration's own result, so this artifact
  * re-reads boost.json itself: it only runs when the package is registered right now AND
- * Context::boostRegisteredBeforeRun() says it was NOT registered when this run started — the same
- * "newly added" condition the original expressed via registerGuideline()'s boolean return. Wraps a
- * ProcessStep for the actual subprocess (reusing its Ran/Failed/ranDetail handling), the same way
- * ArtisanShim wraps StubFile — ProcessStep alone cannot express the missing-binary note, which
- * fires with no row at all, unlike BoostRun's skip.
+ * $registeredBeforeRun (BoostFeature's own snapshot, taken before BoostRegistration could change
+ * it) says it was NOT registered when this run started — the same "newly added" condition the
+ * original expressed via registerGuideline()'s boolean return. Wraps a ProcessStep for the actual
+ * subprocess (reusing its Ran/Failed/ranDetail handling), the same way ArtisanShim wraps StubFile —
+ * ProcessStep alone cannot express the missing-binary note, which fires with no row at all, unlike
+ * BoostRun's skip.
  */
 final readonly class ComposeGuideline implements Artifact
 {
     private const string NOTE = 'Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md.';
 
-    public function __construct(private string $package) {}
+    public function __construct(
+        private string $package,
+        private bool $registeredBeforeRun,
+    ) {}
 
     public function label(): string
     {
@@ -47,7 +51,7 @@ final readonly class ComposeGuideline implements Artifact
     /** @return iterable<Result> */
     public function apply(Context $context): iterable
     {
-        if ($context->boostRegisteredBeforeRun() || ! $this->registered($context)) {
+        if ($this->registeredBeforeRun || ! $this->registered($context)) {
             return;
         }
 

@@ -8,15 +8,14 @@ use Bambamboole\ExtendedTestbench\Features\Artifact;
 use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Result;
 use Bambamboole\ExtendedTestbench\Features\Status;
-use Symfony\Component\Process\Process;
 
 /**
  * Runs `boost:install` (no boost.json yet) or `boost:update --discover` (boost.json already
- * exists) — the same choice BoostFeature's boostCommand() makes. ProcessStep cannot express this:
- * it always runs its command, but the original guards on vendor/bin/testbench existing first —
- * when it is missing, the row is 'skipped' and a note fires instead of running anything, and a run
- * that DOES execute but fails gets a second note pointing at APP_ENV=local. Same shape as
- * WorkbenchApp.
+ * exists) — the same choice BoostFeature's boostCommand() makes. Wraps a ProcessStep for the
+ * actual subprocess (its `?array $ttyCommand` exists precisely for this TTY/non-TTY argv
+ * asymmetry), the same way ComposeGuideline wraps one — ProcessStep alone cannot express the
+ * missing-binary guard (skip with a note, no process run at all) or the failure note pointing at
+ * APP_ENV=local, so those stay here around it.
  *
  * label() is the given command joined with a space ('boost:install' or 'boost:update --discover'),
  * matching the original's `implode(' ', $command)`.
@@ -56,21 +55,23 @@ final readonly class BoostRun implements Artifact
             return;
         }
 
-        if (Process::isTtySupported()) {
-            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$this->command], $context->root(), timeout: null);
-            $process->setTty(true);
-            $process->run();
-        } else {
-            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$this->command, '--no-interaction'], $context->root(), timeout: null);
-            $process->run(fn (string $type, string $buffer) => $context->output()->write($buffer));
+        // The TTY branch drops --no-interaction (so Boost's interactive wizard still works on a
+        // real terminal); the non-TTY branch keeps it (a headless run, timeout: null, must never
+        // block on a prompt nobody can answer).
+        $prefix = [PHP_BINARY, 'vendor/bin/testbench', ...$this->command];
+
+        $step = new ProcessStep($this->label(), [...$prefix, '--no-interaction'], ttyCommand: $prefix);
+
+        // Drained eagerly, and the failure note fired, before anything is yielded: a first()-only
+        // consumer must still see it, same reason ComposeGuideline drains its wrapped step first.
+        $results = iterator_to_array($step->apply($context), false);
+
+        foreach ($results as $result) {
+            if ($result->status === Status::Failed) {
+                $context->note("Boost's commands are only registered in a local environment. Add APP_ENV=local to the env section of testbench.yaml, then run vendor/bin/testbench {$this->label()} yourself.");
+            }
         }
 
-        $successful = $process->isSuccessful();
-
-        if (! $successful) {
-            $context->note("Boost's commands are only registered in a local environment. Add APP_ENV=local to the env section of testbench.yaml, then run vendor/bin/testbench {$this->label()} yourself.");
-        }
-
-        yield new Result($this->label(), $successful ? Status::Ran : Status::Failed);
+        yield from $results;
     }
 }

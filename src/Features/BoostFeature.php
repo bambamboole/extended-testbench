@@ -25,14 +25,16 @@ final readonly class BoostFeature implements Feature
         // Registration has to follow the boost run, because boost:install is what creates
         // boost.json in the first place — but Boost composes the guidelines during that same run,
         // before our name is in the packages key. Snapshotting whether we were already registered
-        // here, right before BoostRegistration can change that, is what lets ComposeGuideline tell
-        // "just added" apart from "was already there" without this Feature being able to branch on
-        // BoostRegistration's own result.
-        $context->markBoostRegisteredBeforeRun($this->registered($context));
+        // here, right before BoostRegistration can change that (this resumes only after BoostRun
+        // has been fully applied, same as before), is what lets ComposeGuideline tell "just added"
+        // apart from "was already there" without this Feature being able to branch on
+        // BoostRegistration's own result. A plain local variable, not Context state: nothing else
+        // needs it, and Context has no business carrying a field only two artifacts care about.
+        $registeredBefore = $this->registered($context);
 
         yield new BoostRegistration(self::PACKAGE);
 
-        yield new ComposeGuideline(self::PACKAGE);
+        yield new ComposeGuideline(self::PACKAGE, $registeredBefore);
     }
 
     /** @return array<int, string> */

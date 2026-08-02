@@ -17,8 +17,6 @@ final class Context
 
     private bool $autoloadChanged = false;
 
-    private bool $boostRegisteredBeforeRun = false;
-
     /** @var array<int, string> */
     private array $failedInstalls = [];
 
@@ -145,23 +143,6 @@ final class Context
     public function autoloadChanged(): bool
     {
         return $this->autoloadChanged;
-    }
-
-    /**
-     * Whether the boost guideline package was already registered in boost.json before this run
-     * started. BoostFeature records this right before BoostRegistration can change it, so
-     * ComposeGuideline — which cannot see BoostRegistration's own result, only re-read boost.json
-     * itself — can tell "just added" apart from "was already there" and avoid recomposing on
-     * every run.
-     */
-    public function markBoostRegisteredBeforeRun(bool $registered): void
-    {
-        $this->boostRegisteredBeforeRun = $registered;
-    }
-
-    public function boostRegisteredBeforeRun(): bool
-    {
-        return $this->boostRegisteredBeforeRun;
     }
 
     public function markInstallFailed(string ...$constraints): void

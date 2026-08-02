@@ -37,36 +37,21 @@ it('declares boost:update --discover as the run label once boost.json already ex
     ]);
 });
 
-it('marks the context as already registered when boost.json lists the package before this run', function () {
-    $context = makeContext();
-    file_put_contents($context->path('boost.json'), json_encode(['packages' => ['bambamboole/extended-testbench']]));
-
-    iterator_to_array((new BoostFeature)->artifacts($context), false);
-
-    expect($context->boostRegisteredBeforeRun())->toBeTrue();
-});
-
-it('marks the context as not yet registered when boost.json is missing or lacks the package', function () {
-    $withoutFile = makeContext();
-    iterator_to_array((new BoostFeature)->artifacts($withoutFile), false);
-    expect($withoutFile->boostRegisteredBeforeRun())->toBeFalse();
-
-    $withOtherPackages = makeContext();
-    file_put_contents($withOtherPackages->path('boost.json'), json_encode(['packages' => ['acme/other']]));
-    iterator_to_array((new BoostFeature)->artifacts($withOtherPackages), false);
-    expect($withOtherPackages->boostRegisteredBeforeRun())->toBeFalse();
-});
-
 it('runs boost:install, registers the package and composes the guideline end to end on a fresh package', function () {
     $context = makeContext();
     mkdir($context->path('vendor/bin'), 0755, true);
 
-    // A fake vendor/bin/testbench: `boost:install` creates boost.json (as the real command would),
-    // `boost:update` (compose) just needs to succeed.
+    // A fake vendor/bin/testbench: `boost:install` creates boost.json (as the real command would).
+    // `boost:update --no-interaction` with no --discover is ComposeGuideline's own compose call —
+    // it drops a marker so the test can prove that call actually happened, not just that
+    // boost.json ended up with the right content (which would pass even if compose never ran).
     file_put_contents($context->path('vendor/bin/testbench'), <<<'PHP'
         <?php
         if ($argv[1] === 'boost:install') {
             file_put_contents(__DIR__.'/../../boost.json', json_encode(['packages' => []]));
+        }
+        if ($argv[1] === 'boost:update' && ! in_array('--discover', $argv, true)) {
+            file_put_contents(__DIR__.'/../../compose-ran.marker', '1');
         }
         PHP);
 
@@ -77,7 +62,7 @@ it('runs boost:install, registers the package and composes the guideline end to 
     $boost = json_decode((string) file_get_contents($context->path('boost.json')), true);
 
     expect($boost['packages'])->toBe(['bambamboole/extended-testbench'])
-        ->and($context->boostRegisteredBeforeRun())->toBeFalse();
+        ->and(file_exists($context->path('compose-ran.marker')))->toBeTrue();
 });
 
 it('does not recompose the guideline when the package was already registered', function () {
@@ -99,6 +84,5 @@ it('does not recompose the guideline when the package was already registered', f
         iterator_to_array($artifact->apply($context), false);
     }
 
-    expect($context->boostRegisteredBeforeRun())->toBeTrue()
-        ->and(file_exists($context->path('compose-ran.marker')))->toBeFalse();
+    expect(file_exists($context->path('compose-ran.marker')))->toBeFalse();
 });
