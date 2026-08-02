@@ -52,7 +52,13 @@
         "lint": "pint --format agent",
         "test": "pest",
         "stan": "phpstan analyse",
-        "refactor": "rector"
+        "refactor": "rector",
+        "check": [
+            "pint --test",
+            "phpstan analyse",
+            "rector --dry-run",
+            "@test"
+        ]
     },
     "config": {
         "sort-packages": true,

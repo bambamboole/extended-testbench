@@ -55,6 +55,7 @@ final class InitCommand extends Command
     ];
 
     protected $signature = 'package:init
+        {--check : Report how this package diverges from the scaffold and write nothing}
         {--defaults : Accept every default without prompting}
         {--force : Replace the generated config files instead of skipping the ones that exist}
         {--workbench : Scaffold a workbench app}
@@ -90,9 +91,26 @@ final class InitCommand extends Command
         parent::__construct();
     }
 
+    /**
+     * Whether this run only reports drift. Every mutation in this command is gated on it: no writes,
+     * no `composer require`, no composer.json edits, and none of the subprocesses.
+     */
+    private function checking(): bool
+    {
+        return $this->option('check') === true;
+    }
+
     public function handle(): int
     {
-        if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
+        // The command is a container singleton and Artisan caches the instance it resolves, so a
+        // second invocation in the same process (a --check after an init, anything programmatic)
+        // would otherwise report the first run's rows on top of its own.
+        $this->results = [];
+        $this->failedInstalls = [];
+        $this->testNamespace = null;
+        $this->autoloadChanged = false;
+
+        if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->checking() && ! $this->hasSectionFlag()) {
             error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
             note('Flags: --workbench --browser --playwright --phpstan --rector --pint, and --no-* for each.');
 
@@ -105,7 +123,7 @@ final class InitCommand extends Command
             return self::FAILURE;
         }
 
-        intro('extended-testbench: package init');
+        intro($this->checking() ? 'extended-testbench: package drift check' : 'extended-testbench: package init');
 
         $workbench = $this->resolve('workbench', 'Add a workbench app?', false);
 
@@ -122,12 +140,9 @@ final class InitCommand extends Command
         $rector = $this->resolve('rector', 'Add Rector?', true);
         $pint = $this->resolve('pint', 'Add Pint?', true);
 
-        $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+        $this->artisan();
         $this->write('.gitattributes', 'gitattributes.stub', onlyIfMissing: true);
-
-        if (is_link($this->root.'/artisan')) {
-            warning('artisan is a symlink, not the shim this package now writes. Both work; replace it with `rm artisan` followed by a rerun if you want the committed shim.');
-        }
+        $this->write('.github/workflows/ci.yml', 'ci.yml.stub', onlyIfMissing: true);
 
         $this->gitignore();
 
@@ -178,9 +193,22 @@ final class InitCommand extends Command
         }
 
         $this->boost();
-        $this->registerGuideline();
 
-        table(['File', 'Result'], $this->results);
+        // Registration has to follow boost(), because boost:install is what creates boost.json in
+        // the first place — but Boost composes the guidelines during that same run, before our name
+        // is in the packages key. Without a second pass the guideline is registered and never
+        // composed, which headless callers cannot fix themselves: boost:update only discovers new
+        // packages behind an interactive multiselect, so a non-interactive run silently keeps the
+        // packages key it already had.
+        if ($this->registerGuideline()) {
+            $this->composeGuideline();
+        }
+
+        table($this->checking() ? ['File', 'Drift'] : ['File', 'Result'], $this->results);
+
+        if ($this->checking()) {
+            return $this->reportDrift();
+        }
 
         if ($this->failedInstalls !== []) {
             error('Failed to install: '.implode(', ', $this->failedInstalls));
@@ -189,6 +217,57 @@ final class InitCommand extends Command
         outro('Done.');
 
         return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function reportDrift(): int
+    {
+        $drifted = array_values(array_filter($this->results, static fn (array $row): bool => $row[1] !== 'ok'));
+
+        if ($drifted === []) {
+            outro('No drift: this package matches the scaffold.');
+
+            return self::SUCCESS;
+        }
+
+        warning(sprintf('%d of %d checks diverge from the scaffold. Nothing was written.', count($drifted), count($this->results)));
+
+        foreach ($drifted as $row) {
+            note("{$row[0]}: {$row[1]}");
+        }
+
+        note('Run package:init without --check to scaffold what is missing, adding --force to replace the generated configs that differ.');
+
+        return self::FAILURE;
+    }
+
+    /**
+     * Replaces a symlinked entrypoint with the committed shim. write()'s onlyIfMissing would skip a
+     * link that still resolves, and that is the common case: the widespread
+     * `ln -s vendor/bin/testbench artisan` recipe works locally but breaks on a fresh clone and on
+     * Windows. A link pointing anywhere else is the user's own and only gets a warning.
+     */
+    private function artisan(): void
+    {
+        $path = $this->root.'/artisan';
+        $binary = realpath($this->root.'/vendor/bin/testbench');
+        $symlinked = is_link($path) && $binary !== false && realpath($path) === $binary;
+
+        if ($symlinked && $this->checking()) {
+            $this->results[] = ['artisan', 'differs (symlink, not the committed shim)'];
+
+            return;
+        }
+
+        if ($symlinked) {
+            @unlink($path);
+            note('artisan was a symlink to vendor/bin/testbench; replacing it with the committed shim, which survives a fresh clone and works on Windows.');
+        }
+
+        $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+
+        if (is_link($path)) {
+            warning('artisan is a symlink to something other than vendor/bin/testbench, so it was left alone. Replace it with `rm artisan` and rerun if you want the committed shim.');
+        }
     }
 
     private function resolve(string $name, string $question, bool $default): bool
@@ -201,7 +280,9 @@ final class InitCommand extends Command
             return false;
         }
 
-        if ($this->option('defaults') === true) {
+        // --check answers for itself: a drift report that stopped to ask six questions would be
+        // useless to the CI job and the agent it exists for. Section flags still narrow it.
+        if ($this->option('defaults') === true || $this->checking()) {
             return $default;
         }
 
@@ -225,7 +306,7 @@ final class InitCommand extends Command
             return (string) $this->option('phpstan-level');
         }
 
-        if ($this->option('defaults') === true) {
+        if ($this->option('defaults') === true || $this->checking()) {
             return '6';
         }
 
@@ -300,6 +381,12 @@ final class InitCommand extends Command
     {
         $binary = $this->root.'/vendor/bin/testbench';
 
+        if ($this->checking()) {
+            $this->results[] = ['workbench/app', $this->hasWorkbench() ? 'ok' : 'missing'];
+
+            return;
+        }
+
         if (! is_file($binary)) {
             $this->results[] = ['workbench:devtool', 'skipped (no vendor/bin/testbench)'];
             note('Run vendor/bin/testbench workbench:devtool to finish the workbench setup.');
@@ -340,6 +427,12 @@ final class InitCommand extends Command
 
         $contents = (string) file_get_contents($pest);
 
+        if ($this->checking()) {
+            $this->results[] = ['tests/Pest.php: Browser suite', str_contains($contents, "'Browser'") ? 'ok' : 'missing'];
+
+            return;
+        }
+
         if (str_contains($contents, "'Browser'")) {
             if (! str_contains($contents, 'BrowserTestCase')) {
                 warning("tests/Pest.php already maps 'Browser' to the base TestCase. Change that line to uses(\\{$this->testNamespace()}BrowserTestCase::class)->in('Browser'); so the Vite guard runs.");
@@ -359,6 +452,10 @@ final class InitCommand extends Command
 
     private function playwright(): void
     {
+        if ($this->checking()) {
+            return;
+        }
+
         $process = new Process(['npx', 'playwright', 'install'], $this->root, timeout: null);
 
         $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
@@ -417,6 +514,12 @@ final class InitCommand extends Command
             static fn (string $entry): bool => ! in_array($normalise($entry), $present, true),
         ));
 
+        if ($this->checking()) {
+            $this->results[] = ['.gitignore', $missing === [] ? 'ok' : 'missing '.count($missing).' entries: '.implode(' ', $missing)];
+
+            return;
+        }
+
         if ($missing === []) {
             $this->results[] = ['.gitignore', 'skipped (nothing to add)'];
 
@@ -445,6 +548,10 @@ final class InitCommand extends Command
 
     private function boost(): void
     {
+        if ($this->checking()) {
+            return;
+        }
+
         $command = $this->boostCommand();
         $label = implode(' ', $command);
 
@@ -471,26 +578,38 @@ final class InitCommand extends Command
         $this->results[] = [$label, $process->isSuccessful() ? 'ran' : 'failed'];
     }
 
-    private function registerGuideline(): void
+    /** @return bool Whether the package was newly added and the guidelines need composing again. */
+    private function registerGuideline(): bool
     {
         $path = $this->root.'/boost.json';
 
         if (! file_exists($path)) {
-            return;
+            if ($this->checking()) {
+                $this->results[] = ['boost.json', 'missing'];
+            }
+
+            return false;
         }
 
         $config = json_decode((string) @file_get_contents($path), true);
 
         if (! is_array($config)) {
-            $this->results[] = ['boost.json', 'failed (unreadable)'];
+            $this->results[] = ['boost.json', $this->checking() ? 'unreadable' : 'failed (unreadable)'];
 
-            return;
+            return false;
         }
 
         $packages = is_array($config['packages'] ?? null) ? $config['packages'] : [];
+        $registered = in_array('bambamboole/extended-testbench', $packages, true);
 
-        if (in_array('bambamboole/extended-testbench', $packages, true)) {
-            return;
+        if ($this->checking()) {
+            $this->results[] = ['boost.json: packages', $registered ? 'ok' : 'missing'];
+
+            return false;
+        }
+
+        if ($registered) {
+            return false;
         }
 
         $packages[] = 'bambamboole/extended-testbench';
@@ -501,11 +620,35 @@ final class InitCommand extends Command
         if (@file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
             $this->results[] = ['boost.json', 'failed'];
 
-            return;
+            return false;
         }
 
         $this->results[] = ['boost.json', 'registered guideline'];
-        note('Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md now.');
+
+        return true;
+    }
+
+    private function composeGuideline(): void
+    {
+        if (! is_file($this->root.'/vendor/bin/testbench')) {
+            note('Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md.');
+
+            return;
+        }
+
+        $process = new Process(
+            [PHP_BINARY, 'vendor/bin/testbench', 'boost:update', '--no-interaction'],
+            $this->root,
+            timeout: null,
+        );
+
+        $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
+
+        if (! $process->isSuccessful()) {
+            note('Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md.');
+        }
+
+        $this->results[] = ['boost:update', $process->isSuccessful() ? 'composed guideline' : 'failed'];
     }
 
     /** @return array<int, string> */
@@ -519,6 +662,12 @@ final class InitCommand extends Command
     private function testDirectory(string $path): void
     {
         $dir = $this->root.'/'.$path;
+
+        if ($this->checking()) {
+            $this->results[] = [$path, is_dir($dir) ? 'ok' : 'missing'];
+
+            return;
+        }
 
         if (! is_dir($dir) && ! @mkdir($dir, 0755, recursive: true)) {
             $this->results[] = [$path, 'failed'];
@@ -555,6 +704,14 @@ final class InitCommand extends Command
             return;
         }
 
+        if ($this->checking()) {
+            foreach ($missing as $package) {
+                $this->results[] = [$package, 'missing'];
+            }
+
+            return;
+        }
+
         if ($this->composer->requirePackages($missing, dev: true, output: $this->output)) {
             return;
         }
@@ -570,6 +727,13 @@ final class InitCommand extends Command
     private function write(string $path, string $stub, array $replacements = [], bool $onlyIfMissing = false): void
     {
         $target = $this->root.'/'.$path;
+        $rendered = $this->render($stub, $replacements);
+
+        if ($this->checking()) {
+            $this->results[] = [$path, $this->drift($target, $path, $rendered, $onlyIfMissing)];
+
+            return;
+        }
 
         // A dangling symlink makes file_exists() report false, so onlyIfMissing would not trip and
         // file_put_contents() would write through the link, creating whatever it pointed at.
@@ -589,8 +753,13 @@ final class InitCommand extends Command
             // Only the generated config files reach this branch; anything holding hand-written code
             // is written with onlyIfMissing above and stays out of --force's reach. Without a real
             // prompt the answer is no, so a headless run reports the skip instead of asking nobody.
-            $overwrite = $this->option('force') === true
-                || ($this->canPrompt() && confirm("Overwrite {$path}?", default: false));
+            $overwrite = $this->option('force') === true;
+
+            if (! $overwrite && $this->canPrompt()) {
+                $this->diff($target, $path, $rendered);
+
+                $overwrite = confirm("Overwrite {$path}?", default: false);
+            }
 
             if (! $overwrite) {
                 $this->results[] = [$path, 'skipped (exists, --force to replace)'];
@@ -605,13 +774,59 @@ final class InitCommand extends Command
             return;
         }
 
-        if (@file_put_contents($target, $this->render($stub, $replacements)) === false) {
+        if (@file_put_contents($target, $rendered) === false) {
             $this->results[] = [$path, 'failed'];
 
             return;
         }
 
         $this->results[] = [$path, $existed ? 'overwritten' : 'written'];
+    }
+
+    /**
+     * A file written with onlyIfMissing holds hand-written code, so only its absence is drift —
+     * comparing its body against the stub would report every package that has ever edited its own
+     * TestCase. For the generated configs the body is the whole point, so those are compared.
+     */
+    private function drift(string $target, string $path, string $rendered, bool $onlyIfMissing): string
+    {
+        if (! file_exists($target)) {
+            return 'missing';
+        }
+
+        if ($onlyIfMissing || (string) @file_get_contents($target) === $rendered) {
+            return 'ok';
+        }
+
+        $this->diff($target, $path, $rendered);
+
+        return 'differs';
+    }
+
+    /**
+     * ponytail: shells out to POSIX `diff`, so the body of the drift is invisible on a Windows box
+     * without one. The row still reports `differs` there; swap in a PHP differ if that matters.
+     */
+    private function diff(string $target, string $path, string $rendered): void
+    {
+        note("{$path} differs from the scaffold:");
+
+        // No --label: it is GNU-only, and an unsupported flag would cost the whole diff rather than
+        // just its header. `-` is the scaffold arriving on stdin.
+        $process = new Process(['diff', '-u', $target, '-'], $this->root);
+        $process->setInput($rendered);
+
+        try {
+            $process->run();
+        } catch (\Throwable) {
+            return;
+        }
+
+        $output = trim($process->getOutput());
+
+        if ($output !== '') {
+            $this->output->writeln($output);
+        }
     }
 
     /**
@@ -660,7 +875,21 @@ final class InitCommand extends Command
      */
     private function script(string $name, string|array $command): void
     {
-        if (isset($this->composerJson()['scripts'][$name])) {
+        $scripts = (array) ($this->composerJson()['scripts'] ?? []);
+
+        if (isset($scripts[$name])) {
+            if ($this->checking()) {
+                $this->results[] = ["composer script: {$name}", 'ok'];
+            }
+
+            return;
+        }
+
+        $this->warnAboutRenamedScript($name, $command, $scripts);
+
+        if ($this->checking()) {
+            $this->results[] = ["composer script: {$name}", 'missing'];
+
             return;
         }
 
@@ -671,6 +900,38 @@ final class InitCommand extends Command
         });
 
         $this->results[] = ["composer script: {$name}", 'added'];
+    }
+
+    /**
+     * script() only ever matched on the name, so a package that already runs the same tool under its
+     * own name (`analyse` for our `stan`, `lint:fix` for our `lint`) silently ended up with both,
+     * and a `check` wired to whichever one we scaffolded. We still add ours — renaming someone's
+     * scripts and the CI that calls them is not ours to do — but the collision gets said out loud.
+     *
+     * @param  string|array<int, string>  $command
+     * @param  array<string, mixed>  $scripts
+     */
+    private function warnAboutRenamedScript(string $name, string|array $command, array $scripts): void
+    {
+        if (is_array($command)) {
+            return;
+        }
+
+        $tool = static function (mixed $value): string {
+            $first = is_array($value) ? (string) ($value[0] ?? '') : (string) $value;
+
+            return explode(' ', trim($first))[0];
+        };
+
+        $ours = $tool($command);
+
+        foreach ($scripts as $existing => $existingCommand) {
+            if ($tool($existingCommand) === $ours) {
+                warning("composer script '{$existing}' already runs {$ours}; adding '{$name}' alongside it. The generated `check` script calls '{$name}', so drop one of the two or point `check` at yours.");
+
+                return;
+            }
+        }
     }
 
     /** @return array<string, mixed> */
@@ -695,6 +956,12 @@ final class InitCommand extends Command
             if (rtrim((string) $path, '/') === 'tests') {
                 return $this->testNamespace = (string) $namespace;
             }
+        }
+
+        if ($this->checking()) {
+            $this->results[] = ['composer autoload-dev: Tests\\', 'missing'];
+
+            return $this->testNamespace = 'Tests\\';
         }
 
         $this->composer->modify(static function (array $composer): array {

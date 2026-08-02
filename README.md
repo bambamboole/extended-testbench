@@ -46,6 +46,7 @@ vendor/bin/testbench package:init
 
 Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint, `.gitattributes`
 (development-only files marked `export-ignore` so they don't ship in the dist archive),
+`.github/workflows/ci.yml` (PHP 8.4 running the generated `check` script),
 `phpunit.xml.dist` (sqlite `:memory:`, plus the Testbench skeleton's `APP_KEY` — the skeleton keeps
 that key in a `.env` that the `package:purge-skeleton` hook deletes on every autoload dump, so
 pinning it here is what keeps a cold suite from throwing `MissingAppKeyException`),
@@ -74,7 +75,22 @@ vendor/bin/testbench package:init --defaults
 answer the other way. Without a terminal and without any of these flags the command refuses to run
 rather than guessing — pass `--defaults` to take every default.
 
-Adopting the scaffold in a package that already has some of it is what `--force` is for:
+Before adopting the scaffold in a package that already has its own setup, ask where the two diverge:
+
+```bash
+vendor/bin/testbench package:init --check
+```
+
+`--check` writes nothing at all — no files, no `composer require`, no `composer.json` edits, none of
+the subprocesses — and reports every file, package, composer script and `.gitignore` entry as `ok`,
+`missing` or `differs`, printing a unified diff for each generated config whose body has drifted. It
+exits non-zero when anything diverges, so it works as a CI guard. It answers the section questions
+itself rather than prompting; section flags still narrow what it looks at. Files that hold
+hand-written code (`tests/TestCase.php`, `tests/Pest.php`, `testbench.yaml`, `artisan`,
+`.gitattributes`, the CI workflow) are only checked for existence — comparing their bodies against
+the stub would report every package that has ever edited its own `TestCase`.
+
+Adopting what the check found is what `--force` is for:
 
 ```bash
 vendor/bin/testbench package:init --defaults --force
@@ -100,9 +116,15 @@ script into `post-install-cmd` / `post-update-cmd`; `boost:refresh` reruns
 `vendor/bin/testbench` exists, or before Boost has been set up (`boost.json` present), and never
 fails the surrounding `composer install`/`update` even if that rerun does.
 
-Existing files are never replaced without asking or `--force`; a legacy `phpunit.xml` or `phpstan.neon` that would
-shadow the generated `.dist` file, or an `artisan` that's still a symlink rather than the committed
-shim, only gets a warning, never rewritten automatically. It finishes by running `boost:install` (or
+Existing files are never replaced without asking or `--force`, and the overwrite prompt shows a
+unified diff first; a legacy `phpunit.xml` or `phpstan.neon` that would shadow the generated `.dist`
+file only gets a warning, never rewritten automatically. An `artisan` that is a symlink to
+`vendor/bin/testbench` — the widespread `ln -s vendor/bin/testbench artisan` recipe, which resolves
+locally but breaks on a fresh clone and on Windows — is replaced with the committed shim; a symlink
+pointing anywhere else is yours and only gets a warning. A composer script that already runs a tool
+under its own name (`analyse` where we scaffold `stan`) is reported as a collision rather than
+silently doubled up, but both are kept: renaming your scripts and the CI that calls them is not this
+command's business. It finishes by running `boost:install` (or
 `boost:update --discover` when Boost is already set up) and registering itself in `boost.json`'s
 `packages` key — Boost cannot discover a new third-party package non-interactively — so the
 guidelines land in your `CLAUDE.md` / `AGENTS.md` without a second step.
@@ -118,12 +140,19 @@ the Testbench-specific facts agents get wrong (`artisan` is a shim, `base_path()
 and not your package). Boost discovers it automatically and composes it into your `CLAUDE.md` /
 `AGENTS.md` under a `bambamboole/extended-testbench rules` heading.
 
-You are asked about it during `vendor/bin/testbench boost:install`. If Boost is already installed,
-pick it up once with:
+`package:init` registers this package in `boost.json`'s `packages` key and then reruns
+`boost:update` so the guideline lands in the same run. If Boost is already installed and you would
+rather not rerun `package:init`, pick it up once with:
 
 ```bash
 vendor/bin/testbench boost:update --discover
 ```
+
+That command **only works at an interactive terminal**. Boost gates discovery of new third-party
+packages behind a multiselect and returns early without one, so `--discover --no-interaction` prints
+`updated successfully`, exits `0`, and composes nothing new. A headless caller has to add
+`"packages": ["bambamboole/extended-testbench"]` to `boost.json` itself — or just run
+`package:init`, which does exactly that.
 
 Adding your own files to `.ai/guidelines/` in your package extends the set — a same-named file does not
 replace ours, both get composed into your `CLAUDE.md` / `AGENTS.md`. To drop ours entirely, deselect
@@ -149,4 +178,8 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
   fails loudly on it. Enable symlinks (`git config core.symlinks true` and re-clone) or recreate the
   symlink by hand.
 - `orchestra/testbench ^11` is a hard requirement, not just what the suite is tested against: it sits
-  in `require` so installing this package is all you need. That means PHP 8.4+ and Laravel 13.
+  in `require` so installing this package is all you need. That means PHP 8.4+ and Laravel 13 — and
+  it applies to the whole dev environment, not just this bridge. A package that still supports
+  `illuminate/* ^11 || ^12` can depend on this one, but any CI job pinning testbench 10 or Laravel
+  11/12 will stop resolving once it is in `require-dev`. Keep it out until you are ready to drop
+  those matrix legs.
