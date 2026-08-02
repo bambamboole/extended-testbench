@@ -151,6 +151,27 @@ What `package:init` scaffolds requires PHP 8.4+ and `orchestra/testbench ^11`: P
 and `symfony/process ^8.1`; testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`,
 so only testbench 11 (Laravel 13) resolves. `pest-plugin-browser` additionally requires `ext-sockets`.
 
+### Feature list
+
+Internally, `package:init` runs its work as an ordered list of `Feature` classes, each declaring the
+files, packages and composer scripts it owns and the row those write to the result table above. The
+list is internal — there is no public API to register a feature from outside this package — and its
+order is fixed:
+
+1. `EntrypointFeature` — the `artisan` shim
+2. `GitFeature` — `.gitattributes`
+3. `CiFeature` — the CI workflow
+4. `GitignoreFeature` — `.gitignore` entries
+5. `PestFeature` — the Pest/PHPUnit baseline
+6. `WorkbenchFeature` — the workbench app
+7. `BrowserFeature` — browser tests
+8. `PlaywrightFeature` — the Playwright browser install
+9. `PhpstanFeature` — PHPStan
+10. `RectorFeature` — Rector
+11. `PintFeature` — Pint
+12. `ComposerScriptsFeature` — the `check` script and the Testbench/Boost composer hooks
+13. `BoostFeature` — Boost install/update and registering this package in `boost.json`
+
 ## Shipped guidelines
 
 This package publishes one Boost guideline covering comments, git and pull request conventions, and
