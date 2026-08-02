@@ -11,6 +11,7 @@ use Symfony\Component\Process\Process;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\outro;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
 
 final class InitCommand extends Command
@@ -48,6 +49,9 @@ final class InitCommand extends Command
         $browser = confirm('Add browser tests?', default: false);
         $playwright = $browser && confirm('Install Playwright browsers now?', default: false);
 
+        $phpstan = confirm('Add PHPStan (Larastan)?', default: true);
+        $level = $phpstan ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6') : '6';
+
         $this->pest($browser);
 
         if ($browser) {
@@ -56,6 +60,10 @@ final class InitCommand extends Command
 
         if ($playwright) {
             $this->playwright();
+        }
+
+        if ($phpstan) {
+            $this->phpstan($level);
         }
 
         if ($this->autoloadChanged) {
@@ -129,6 +137,15 @@ final class InitCommand extends Command
         $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
 
         $this->results[] = ['npx playwright install', $process->isSuccessful() ? 'ran' : 'failed'];
+    }
+
+    private function phpstan(string $level): void
+    {
+        $this->install(['larastan/larastan:^3.0', 'pestphp/pest-plugin-phpstan:^5.0']);
+
+        $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', ['level' => $level]);
+
+        $this->script('stan', 'phpstan analyse');
     }
 
     /** @param  array<int, string>  $packages */

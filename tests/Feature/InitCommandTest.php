@@ -59,6 +59,7 @@ it('scaffolds the pest baseline when everything else is declined', function () {
 
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/phpunit.xml.dist')->toBeFile()
@@ -100,6 +101,7 @@ it('keeps existing files when the overwrite prompt is declined', function () {
 
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'no')
         ->assertSuccessful();
 
@@ -114,6 +116,7 @@ it('overwrites an existing file when the prompt is accepted', function () {
 
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'yes')
         ->assertSuccessful();
 
@@ -126,6 +129,7 @@ it('scaffolds browser tests when accepted', function () {
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/tests/Browser/DummyTest.php')->toBeFile();
@@ -153,6 +157,7 @@ it('appends the browser suite to an existing Pest.php', function () {
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->assertSuccessful();
 
     $pest = file_get_contents($this->root.'/tests/Pest.php');
@@ -168,7 +173,42 @@ it('does not scaffold browser tests when declined', function () {
 
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
+it('scaffolds phpstan when accepted', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpstan.neon.dist')->toBeFile();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))
+        ->toContain('- vendor/larastan/larastan/extension.neon')
+        ->toContain('- vendor/pestphp/pest/extension.neon')
+        ->toContain('- vendor/pestphp/pest-plugin-phpstan/extension.neon')
+        ->toContain('level: 6');
+
+    $composerJson = json_decode(file_get_contents($this->root.'/composer.json'), true);
+
+    expect($composerJson['scripts']['stan'])->toBe('phpstan analyse');
+});
+
+it('writes the selected phpstan level', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '8', ['5', '6', '7', '8', '9', 'max'])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
 });
