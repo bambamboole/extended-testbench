@@ -8,7 +8,11 @@ function guidelinePath(): string
 }
 
 it('ships exactly one boost guideline file', function () {
-    $files = glob(dirname(__DIR__, 2).'/resources/boost/guidelines/*');
+    $dir = dirname(__DIR__, 2).'/resources/boost/guidelines';
+
+    // GuidelineComposer::getThirdPartyGuidelines() does put($package, ...) once per file, so a
+    // second guideline file here would silently win instead of erroring.
+    $files = [...(glob($dir.'/*.blade.php') ?: []), ...(glob($dir.'/*.md') ?: [])];
 
     expect($files)->toHaveCount(1)
         ->and(basename($files[0]))->toBe('core.blade.php');
