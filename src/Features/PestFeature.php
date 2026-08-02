@@ -6,19 +6,13 @@ namespace Bambamboole\ExtendedTestbench\Features;
 
 use Bambamboole\ExtendedTestbench\Features\Artifacts\AutoloadEntry;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\NeedsPackage;
+use Bambamboole\ExtendedTestbench\Features\Artifacts\PhpunitConfig;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\Script;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\StubFile;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\TestDirectory;
 
 final readonly class PestFeature implements Feature
 {
-    private const string BROWSER_TESTSUITE = <<<'XML'
-
-            <testsuite name="Browser">
-                <directory>tests/Browser</directory>
-            </testsuite>
-    XML;
-
     private const string WORKBENCH_BLOCK = <<<'YAML'
 
         workbench:
@@ -44,9 +38,12 @@ final readonly class PestFeature implements Feature
         yield new TestDirectory('tests/Unit');
         yield new TestDirectory('tests/Feature');
 
-        yield new StubFile('phpunit.xml.dist', 'phpunit.xml.dist.stub', [
-            'browser_testsuite' => $context->enabled('browser') ? self::BROWSER_TESTSUITE : '',
-        ], shadowedBy: 'phpunit.xml');
+        yield new PhpunitConfig($context->enabled('browser'));
+
+        // testNamespace() resolves (and, if missing, registers) the autoload-dev entry the moment
+        // it is first called — which the original did while building tests/TestCase.php's
+        // replacements. Its row, when unsatisfied, has to land here to match.
+        yield new AutoloadEntry('Tests\\', 'tests/');
 
         yield new StubFile('tests/TestCase.php', 'TestCase.php.stub', [
             'namespace' => rtrim($context->testNamespace(), '\\'),
@@ -68,8 +65,6 @@ final readonly class PestFeature implements Feature
             ))."\n",
             'workbench' => $context->enabled('workbench') ? self::WORKBENCH_BLOCK : '',
         ], onlyIfMissing: true);
-
-        yield new AutoloadEntry('Tests\\', 'tests/');
 
         yield new Script('test', $context->enabled('browser') ? 'pest --testsuite=Unit,Feature' : 'pest');
     }
