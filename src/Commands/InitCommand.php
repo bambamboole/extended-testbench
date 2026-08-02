@@ -6,6 +6,7 @@ namespace Bambamboole\ExtendedTestbench\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Composer;
+use Symfony\Component\Process\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\intro;
@@ -45,8 +46,17 @@ final class InitCommand extends Command
         intro('extended-testbench: package init');
 
         $browser = confirm('Add browser tests?', default: false);
+        $playwright = $browser && confirm('Install Playwright browsers now?', default: false);
 
         $this->pest($browser);
+
+        if ($browser) {
+            $this->browser();
+        }
+
+        if ($playwright) {
+            $this->playwright();
+        }
 
         if ($this->autoloadChanged) {
             $this->composer->dumpAutoloads();
@@ -89,6 +99,36 @@ final class InitCommand extends Command
         ], onlyIfMissing: true);
 
         $this->script('test', 'pest');
+    }
+
+    private function browser(): void
+    {
+        $this->install(['pestphp/pest-plugin-browser:^5.0']);
+
+        $this->write('tests/Browser/DummyTest.php', 'BrowserDummyTest.php.stub');
+
+        $pest = $this->root.'/tests/Pest.php';
+
+        if (! file_exists($pest) || str_contains((string) file_get_contents($pest), "'Browser'")) {
+            return;
+        }
+
+        file_put_contents(
+            $pest,
+            sprintf("\nuses(\\%sTestCase::class)->in('Browser');\n", $this->testNamespace()),
+            FILE_APPEND,
+        );
+
+        $this->results[] = ['tests/Pest.php', 'browser suite appended'];
+    }
+
+    private function playwright(): void
+    {
+        $process = new Process(['npx', 'playwright', 'install'], $this->root, timeout: null);
+
+        $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
+
+        $this->results[] = ['npx playwright install', $process->isSuccessful() ? 'ran' : 'failed'];
     }
 
     /** @param  array<int, string>  $packages */

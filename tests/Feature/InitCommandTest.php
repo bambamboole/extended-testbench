@@ -119,3 +119,56 @@ it('overwrites an existing file when the prompt is accepted', function () {
 
     expect(file_get_contents($this->root.'/phpunit.xml.dist'))->toContain(':memory:');
 });
+
+it('scaffolds browser tests when accepted', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'yes')
+        ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/Browser/DummyTest.php')->toBeFile();
+
+    expect(file_get_contents($this->root.'/phpunit.xml.dist'))
+        ->toContain('<testsuite name="Browser">')
+        ->toContain('<directory>tests/Browser</directory>');
+
+    expect(file_get_contents($this->root.'/tests/Pest.php'))
+        ->toContain("->in('Feature', 'Unit', 'Browser');");
+
+    expect(file_get_contents($this->root.'/tests/Browser/DummyTest.php'))
+        ->toContain("visit('/dummy')");
+});
+
+it('appends the browser suite to an existing Pest.php', function () {
+    mkdir($this->root.'/tests', 0755, true);
+    file_put_contents(
+        $this->root.'/tests/Pest.php',
+        "<?php\n\ndeclare(strict_types=1);\n\nuses(Tests\\TestCase::class)->in('Feature');\n",
+    );
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'yes')
+        ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->assertSuccessful();
+
+    $pest = file_get_contents($this->root.'/tests/Pest.php');
+
+    expect($pest)->toContain("uses(Tests\\TestCase::class)->in('Feature');")
+        ->toContain("->in('Browser');");
+
+    expect(substr_count($pest, "in('Browser')"))->toBe(1);
+});
+
+it('does not scaffold browser tests when declined', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/Browser')->not->toBeDirectory();
+});
