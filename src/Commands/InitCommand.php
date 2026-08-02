@@ -218,6 +218,10 @@ final class InitCommand extends Command
         $process->setTty(true);
         $process->run();
 
+        if (! $process->isSuccessful()) {
+            note("Boost's commands are only registered in a local environment. Add APP_ENV=local to the env section of testbench.yaml, then run vendor/bin/testbench {$label} yourself.");
+        }
+
         $this->results[] = [$label, $process->isSuccessful() ? 'ran' : 'failed'];
     }
 
