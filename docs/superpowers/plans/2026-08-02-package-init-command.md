@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - This package's `require.php` becomes `^8.4` (PHP 8.4 and 8.5 only). Nothing may reintroduce an `^8.2`/`^8.3` floor.
+- The scaffolded setup only resolves on `orchestra/testbench ^11`, not `^10.10|^11`: Pest 5 requires `symfony/process ^8.1`, but testbench 10.x pulls `laravel/framework ^12`, which pins `symfony/process` to `^7.2` — only testbench 11 (`laravel/framework ^13`) allows a `symfony/process` that satisfies both.
 - Every file the command writes goes through `$this->root` (the injected package root). Never `base_path()`, never `getcwd()`, never `package_path()` inside the command.
 - Existing files are never silently replaced. `phpunit.xml.dist`, `phpstan.neon.dist`, `rector.php`, `pint.json`, `tests/Browser/DummyTest.php` prompt `confirm("Overwrite <path>?", default: false)`; `tests/TestCase.php`, `tests/Pest.php`, `testbench.yaml` are written **only when missing** and are recorded as `skipped (exists)` without a prompt.
 - Declared version constraints, exactly: `pestphp/pest:^5.0`, `pestphp/pest-plugin-browser:^5.0`, `larastan/larastan:^3.0`, `pestphp/pest-plugin-phpstan:^5.0`, `rector/rector:^2.0`, `laravel/pint:^1.16`. `pestphp/pest-plugin-laravel` is **not** installed (v5 pins `laravel/framework ^13.23`).
@@ -1104,7 +1105,8 @@ Installs Pest 5 and writes `phpunit.xml.dist` (sqlite `:memory:`), `tests/TestCa
 Pint — installing each and writing its config and composer script. Existing files are never
 replaced without asking.
 
-Requires PHP 8.4+ and `orchestra/testbench ^10.10|^11`; Pest 5 needs PHPUnit 13.
+Requires PHP 8.4+ and `orchestra/testbench ^11`; Pest 5 needs PHPUnit 13 and `symfony/process ^8.1`,
+which only testbench 11 (Laravel 13) provides.
 ```
 
 - [ ] **Step 2: Sanity-check the stubs the tests cannot lint**

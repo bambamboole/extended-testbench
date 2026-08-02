@@ -30,10 +30,12 @@ prompt.
 - **PHP `^8.4` only** (8.4 and 8.5). This package bumps `require.php` from `^8.2` to `^8.4`.
   Pest 5 requires PHP `^8.4` and PHPUnit `^13`, so the baseline the command installs cannot run
   anywhere else.
-- Consequently `package:init` only produces a working setup on `orchestra/testbench ^10.10|^11`
-  (earlier versions do not allow PHPUnit 13). No preflight check is written: `composer require`
-  fails with its own conflict message, which is clear enough. Deliberately skipped, add only if
-  the solver output turns out to confuse people.
+- Consequently `package:init` only produces a working setup on `orchestra/testbench ^11`. Pest 5
+  requires `symfony/process ^8.1`; testbench 10.x pulls in `laravel/framework ^12`, which pins
+  `symfony/process ^7.2`, so the solver conflicts. Only testbench 11 (`laravel/framework ^13`, which
+  allows `symfony/process ^7.4.5 || ^8.0.5`) resolves the full set. No preflight check is written:
+  `composer require` fails with its own conflict message, which is clear enough. Deliberately
+  skipped, add only if the solver output turns out to confuse people.
 - `pestphp/pest-plugin-laravel` is **not** installed — v5 pins `laravel/framework ^13.23`, which
   would lock every consumer to Laravel 13. Testbench already provides the Laravel test case.
 

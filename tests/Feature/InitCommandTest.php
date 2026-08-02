@@ -32,11 +32,13 @@ afterEach(function () {
  *
  * The Composer double keeps the real hasPackage()/modify() (they only touch
  * the temp composer.json) and stubs out the two methods that shell out.
+ * `$installs` controls what `requirePackages()` returns, so a test can
+ * simulate a failed `composer require`.
  */
-function bindInit(string $root): void
+function bindInit(string $root, bool $installs = true): void
 {
     $composer = Mockery::mock(Composer::class.'[requirePackages,dumpAutoloads]', [new Filesystem, $root]);
-    $composer->shouldReceive('requirePackages')->andReturnTrue();
+    $composer->shouldReceive('requirePackages')->andReturn($installs);
     $composer->shouldReceive('dumpAutoloads')->andReturnTrue();
 
     app()->instance(InitCommand::class, new InitCommand($composer, $root));
@@ -94,6 +96,22 @@ it('scaffolds the pest baseline when everything else is declined', function () {
         ->and($composerJson['scripts'])->not->toHaveKeys(['stan', 'refactor', 'lint']);
 });
 
+it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit does not fail to boot', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/Unit')->toBeDirectory()
+        ->and($this->root.'/tests/Unit/.gitkeep')->toBeFile()
+        ->and($this->root.'/tests/Feature')->toBeDirectory()
+        ->and($this->root.'/tests/Feature/.gitkeep')->toBeFile();
+});
+
 it('keeps existing files when the overwrite prompt is declined', function () {
     file_put_contents($this->root.'/phpunit.xml.dist', 'ORIGINAL');
     mkdir($this->root.'/tests', 0755, true);
@@ -124,9 +142,54 @@ it('overwrites an existing file when the prompt is accepted', function () {
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'yes')
+        ->expectsOutputToContain('overwritten')
         ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpunit.xml.dist'))->toContain(':memory:');
+});
+
+it('warns instead of overwriting when browser tests are accepted but the phpunit config is kept', function () {
+    file_put_contents($this->root.'/phpunit.xml.dist', 'ORIGINAL');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'yes')
+        ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'no')
+        ->expectsPromptsWarning('phpunit.xml.dist was kept as-is — add the Browser testsuite to it by hand.')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpunit.xml.dist'))->toBe('ORIGINAL')
+        ->and($this->root.'/tests/Browser/DummyTest.php')->toBeFile();
+});
+
+it('reports failure and records it in the summary when a composer install fails', function () {
+    bindInit($this->root, installs: false);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsPromptsTable(['File', 'Result'], [
+            ['pestphp/pest:^5.0', 'failed'],
+            ['tests/Unit/.gitkeep', 'written'],
+            ['tests/Feature/.gitkeep', 'written'],
+            ['phpunit.xml.dist', 'written'],
+            ['tests/TestCase.php', 'written'],
+            ['tests/Pest.php', 'written'],
+            ['testbench.yaml', 'written'],
+            ['composer script: test', 'added'],
+        ])
+        ->expectsPromptsError('Failed to install: pestphp/pest:^5.0')
+        ->assertFailed();
+
+    // The rest of the run still happens: files are written despite the failed install.
+    expect($this->root.'/phpunit.xml.dist')->toBeFile();
 });
 
 it('scaffolds browser tests when accepted', function () {

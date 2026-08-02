@@ -9,19 +9,20 @@ use Illuminate\Support\Composer;
 use Symfony\Component\Process\Process;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\table;
+use function Laravel\Prompts\warning;
 
 final class InitCommand extends Command
 {
     private const BROWSER_TESTSUITE = <<<'XML'
 
-
-        <testsuite name="Browser">
-            <directory>tests/Browser</directory>
-        </testsuite>
+            <testsuite name="Browser">
+                <directory>tests/Browser</directory>
+            </testsuite>
     XML;
 
     protected $signature = 'package:init';
@@ -30,6 +31,9 @@ final class InitCommand extends Command
 
     /** @var array<int, array{0: string, 1: string}> */
     private array $results = [];
+
+    /** @var array<int, string> */
+    private array $failedInstalls = [];
 
     private ?string $testNamespace = null;
 
@@ -83,19 +87,30 @@ final class InitCommand extends Command
 
         table(['File', 'Result'], $this->results);
 
+        if ($this->failedInstalls !== []) {
+            error('Failed to install: '.implode(', ', $this->failedInstalls));
+        }
+
         outro('Done.');
 
-        return self::SUCCESS;
+        return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
     }
 
     private function pest(bool $browser): void
     {
         $this->install(['pestphp/pest:^5.0']);
 
+        $this->testDirectory('tests/Unit');
+        $this->testDirectory('tests/Feature');
+
         $this->write('phpunit.xml.dist', 'phpunit.xml.dist.stub', [
             'app_key' => 'base64:'.base64_encode(random_bytes(32)),
             'browser_testsuite' => $browser ? self::BROWSER_TESTSUITE : '',
         ]);
+
+        if ($browser && ! str_contains((string) file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
+            warning('phpunit.xml.dist was kept as-is — add the Browser testsuite to it by hand.');
+        }
 
         $this->write('tests/TestCase.php', 'TestCase.php.stub', [
             'namespace' => rtrim($this->testNamespace(), '\\'),
@@ -177,6 +192,25 @@ final class InitCommand extends Command
         $this->script('lint', 'pint --format agent');
     }
 
+    private function testDirectory(string $path): void
+    {
+        $dir = $this->root.'/'.$path;
+
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, recursive: true);
+        }
+
+        $gitkeep = $path.'/.gitkeep';
+
+        if (file_exists($this->root.'/'.$gitkeep)) {
+            return;
+        }
+
+        file_put_contents($this->root.'/'.$gitkeep, '');
+
+        $this->results[] = [$gitkeep, 'written'];
+    }
+
     /** @param  array<int, string>  $packages */
     private function install(array $packages): void
     {
@@ -189,15 +223,24 @@ final class InitCommand extends Command
             return;
         }
 
-        $this->composer->requirePackages($missing, dev: true, output: $this->output);
+        if ($this->composer->requirePackages($missing, dev: true, output: $this->output)) {
+            return;
+        }
+
+        foreach ($missing as $package) {
+            $this->results[] = [$package, 'failed'];
+        }
+
+        $this->failedInstalls = [...$this->failedInstalls, ...$missing];
     }
 
     /** @param  array<string, string>  $replacements */
     private function write(string $path, string $stub, array $replacements = [], bool $onlyIfMissing = false): void
     {
         $target = $this->root.'/'.$path;
+        $existed = file_exists($target);
 
-        if (file_exists($target)) {
+        if ($existed) {
             if ($onlyIfMissing) {
                 $this->results[] = [$path, 'skipped (exists)'];
 
@@ -211,13 +254,19 @@ final class InitCommand extends Command
             }
         }
 
-        if (! is_dir(dirname($target))) {
-            mkdir(dirname($target), 0755, recursive: true);
+        if (! is_dir(dirname($target)) && ! mkdir(dirname($target), 0755, recursive: true)) {
+            $this->results[] = [$path, 'failed'];
+
+            return;
         }
 
-        file_put_contents($target, $this->render($stub, $replacements));
+        if (file_put_contents($target, $this->render($stub, $replacements)) === false) {
+            $this->results[] = [$path, 'failed'];
 
-        $this->results[] = [$path, 'written'];
+            return;
+        }
+
+        $this->results[] = [$path, $existed ? 'overwritten' : 'written'];
     }
 
     /** @param  array<string, string>  $replacements */

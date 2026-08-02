@@ -45,8 +45,9 @@ Installs Pest 5 and writes `phpunit.xml.dist` (sqlite `:memory:`), `tests/TestCa
 Rector (`rector.php` plus a `refactor` script) and Pint (`pint.json` plus a `lint` script). Existing
 files are never replaced without asking.
 
-Requires PHP 8.4+ and `orchestra/testbench ^10.10|^11`, because Pest 5 needs PHPUnit 13 and
-earlier testbench releases only allow PHPUnit 11 or 12.
+Requires PHP 8.4+ and `orchestra/testbench ^11`. Pest 5 needs PHPUnit 13 and `symfony/process ^8.1`;
+testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`, so only testbench 11
+(Laravel 13) resolves. `pest-plugin-browser` additionally requires `ext-sockets`.
 
 ## How it works
 
