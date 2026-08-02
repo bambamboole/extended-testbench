@@ -14,9 +14,10 @@ use function Orchestra\Testbench\package_path;
 
 class ExtendedTestbenchServiceProvider extends ServiceProvider
 {
+    #[\Override]
     public function register(): void
     {
-        if ($this->app->runningInConsole() && function_exists('Orchestra\Testbench\package_path')) {
+        if ($this->app->runningInConsole()) {
             $this->app->singleton(InitCommand::class, fn (): InitCommand => new InitCommand(
                 new Composer(new Filesystem, package_path()),
                 package_path(),
@@ -62,7 +63,6 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
     {
         return defined('TESTBENCH_CORE')
             && ! $this->app->runningUnitTests()
-            && function_exists('Orchestra\Testbench\package_path')
             && self::isBoostCommand($_SERVER['argv'] ?? []);
     }
 
@@ -70,18 +70,20 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
     {
         $artisan = package_path('artisan');
 
+        // A dangling symlink is left over from the versions of this package that symlinked the
+        // entrypoint; file_exists() reports false for it, so replace it rather than skipping.
         if (is_link($artisan) && ! file_exists($artisan)) {
-            fwrite(STDERR, "extended-testbench: {$artisan} is a dangling symlink; run: rm artisan && ln -s vendor/bin/testbench artisan".PHP_EOL);
+            @unlink($artisan);
+        }
 
+        if (file_exists($artisan)) {
             return;
         }
 
-        if (file_exists($artisan) || is_link($artisan)) {
-            return;
-        }
+        $stub = (string) file_get_contents(__DIR__.'/../stubs/artisan.stub');
 
-        if (! @symlink('vendor'.DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'testbench', $artisan)) {
-            fwrite(STDERR, 'extended-testbench: could not create the artisan symlink; run: ln -s vendor/bin/testbench artisan'.PHP_EOL);
+        if (@file_put_contents($artisan, $stub) === false) {
+            fwrite(STDERR, "extended-testbench: could not write {$artisan}; create it manually with: require __DIR__.'/vendor/bin/testbench';".PHP_EOL);
         }
     }
 }

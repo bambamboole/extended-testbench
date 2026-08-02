@@ -1,10 +1,14 @@
 /vendor/
 composer.lock
 .phpunit.cache/
-/artisan
 /CLAUDE.md
 /boost.json
-/.ai/
+/.ai/*
+!/.ai/guidelines/
 .idea/
 /docs/superpowers/
 .superpowers/
+/AGENTS.md
+/.mcp.json
+/.claude/skills/
+/.junie/

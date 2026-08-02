@@ -6,6 +6,7 @@ use Bambamboole\ExtendedTestbench\Commands\InitCommand;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Composer;
+use Mockery\MockInterface;
 
 beforeEach(function () {
     $this->root = sys_get_temp_dir().'/etb-init-'.bin2hex(random_bytes(4));
@@ -37,9 +38,10 @@ afterEach(function () {
  */
 function bindInit(string $root, bool $installs = true): void
 {
+    /** @var Composer&MockInterface $composer */
     $composer = Mockery::mock(Composer::class.'[requirePackages,dumpAutoloads]', [new Filesystem, $root]);
     $composer->shouldReceive('requirePackages')->andReturn($installs);
-    $composer->shouldReceive('dumpAutoloads')->andReturnTrue();
+    $composer->shouldReceive('dumpAutoloads')->andReturn(true);
 
     app()->instance(InitCommand::class, new InitCommand($composer, $root));
 }
@@ -49,10 +51,10 @@ it('registers the package:init command', function () {
         ->toContain('package:init');
 });
 
-it('builds the command with the package root and a composer instance', function () {
+it('resolves the InitCommand singleton bound as package:init', function () {
     $command = $this->app->make(InitCommand::class);
 
-    expect($command)->toBeInstanceOf(InitCommand::class)
+    expect($this->app->make(InitCommand::class))->toBe($command)
         ->and($command->getName())->toBe('package:init');
 });
 
@@ -96,6 +98,35 @@ it('scaffolds the pest baseline when everything else is declined', function () {
         ->and($composerJson['scripts'])->not->toHaveKeys(['stan', 'refactor', 'lint']);
 });
 
+it('writes an artisan entrypoint that requires vendor/bin/testbench', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect($this->root.'/artisan')->toBeFile()
+        ->and(file_get_contents($this->root.'/artisan'))->toContain("require __DIR__.'/vendor/bin/testbench';");
+});
+
+it('leaves an existing artisan entrypoint alone', function () {
+    file_put_contents($this->root.'/artisan', "<?php // custom entrypoint\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/artisan'))->toBe("<?php // custom entrypoint\n");
+});
+
 it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit does not fail to boot', function () {
     bindInit($this->root);
 
@@ -110,6 +141,33 @@ it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit doe
         ->and($this->root.'/tests/Unit/.gitkeep')->toBeFile()
         ->and($this->root.'/tests/Feature')->toBeDirectory()
         ->and($this->root.'/tests/Feature/.gitkeep')->toBeFile();
+});
+
+it('reports the test directories as skipped when their .gitkeep already exists', function () {
+    mkdir($this->root.'/tests/Unit', 0755, true);
+    mkdir($this->root.'/tests/Feature', 0755, true);
+    file_put_contents($this->root.'/tests/Unit/.gitkeep', '');
+    file_put_contents($this->root.'/tests/Feature/.gitkeep', '');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
+            ['tests/Unit', 'skipped (exists)'],
+            ['tests/Feature', 'skipped (exists)'],
+            ['phpunit.xml.dist', 'written'],
+            ['tests/TestCase.php', 'written'],
+            ['tests/Pest.php', 'written'],
+            ['testbench.yaml', 'written'],
+            ['composer script: test', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
+        ])
+        ->assertSuccessful();
 });
 
 it('records a failed outcome instead of a false "written" when a path is blocked by a file', function () {
@@ -127,6 +185,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
             ['phpunit.xml.dist', 'written'],
@@ -134,6 +193,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['tests/Pest.php', 'failed'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
 
@@ -205,6 +265,7 @@ it('reports failure and records it in the summary when a composer install fails'
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
             ['pestphp/pest:^5.0', 'failed'],
             ['tests/Unit/.gitkeep', 'written'],
             ['tests/Feature/.gitkeep', 'written'],
@@ -213,6 +274,7 @@ it('reports failure and records it in the summary when a composer install fails'
             ['tests/Pest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->expectsPromptsError('Failed to install: pestphp/pest:^5.0')
         ->assertFailed();
@@ -345,4 +407,30 @@ it('scaffolds rector and pint when accepted', function () {
 
     expect($composerJson['scripts']['refactor'])->toBe('rector')
         ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
+});
+
+it('selects boost:install when the package has no boost.json', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsOutputToContain('boost:install')
+        ->assertSuccessful();
+});
+
+it('selects boost:update --discover when the package already has boost.json', function () {
+    file_put_contents($this->root.'/boost.json', '{"guidelines":true}');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsOutputToContain('boost:update --discover')
+        ->assertSuccessful();
 });

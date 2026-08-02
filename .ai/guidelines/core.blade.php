@@ -1,0 +1,1 @@
+../../resources/boost/guidelines/core.blade.php
