@@ -62,6 +62,7 @@ it('scaffolds the pest baseline when everything else is declined', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -102,6 +103,7 @@ it('writes an artisan entrypoint that requires vendor/bin/testbench', function (
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -118,6 +120,7 @@ it('leaves an existing artisan entrypoint alone', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -131,6 +134,7 @@ it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit doe
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -152,12 +156,14 @@ it('reports the test directories as skipped when their .gitkeep already exists',
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitignore', 'written'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
             ['phpunit.xml.dist', 'written'],
@@ -165,6 +171,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['tests/Pest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['composer script: check', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
@@ -180,12 +187,14 @@ it('records a failed outcome instead of a false "written" when a path is blocked
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitignore', 'written'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
             ['phpunit.xml.dist', 'written'],
@@ -193,6 +202,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['tests/Pest.php', 'failed'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['composer script: check', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
         ->assertSuccessful();
@@ -209,6 +219,7 @@ it('keeps existing files when the overwrite prompt is declined', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -226,6 +237,7 @@ it('overwrites an existing file when the prompt is accepted', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -243,6 +255,7 @@ it('warns instead of overwriting when browser tests are accepted but the phpunit
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
@@ -260,13 +273,16 @@ it('reports failure and records it in the summary when a composer install fails'
     bindInit($this->root, installs: false);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitignore', 'written'],
             ['pestphp/pest:^5.0', 'failed'],
+            ['pestphp/pest-plugin-laravel:^5.0', 'failed'],
             ['tests/Unit/.gitkeep', 'written'],
             ['tests/Feature/.gitkeep', 'written'],
             ['phpunit.xml.dist', 'written'],
@@ -274,9 +290,10 @@ it('reports failure and records it in the summary when a composer install fails'
             ['tests/Pest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
+            ['composer script: check', 'added'],
             ['boost:install', 'skipped (no vendor/bin/testbench)'],
         ])
-        ->expectsPromptsError('Failed to install: pestphp/pest:^5.0')
+        ->expectsPromptsError('Failed to install: pestphp/pest:^5.0, pestphp/pest-plugin-laravel:^5.0')
         ->assertFailed();
 
     // The rest of the run still happens: files are written despite the failed install.
@@ -287,6 +304,7 @@ it('scaffolds browser tests when accepted', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
@@ -317,6 +335,7 @@ it('appends the browser suite to an existing Pest.php', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
@@ -336,6 +355,7 @@ it('does not scaffold browser tests when declined', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -349,6 +369,7 @@ it('scaffolds phpstan when accepted', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
         ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
@@ -373,6 +394,7 @@ it('writes the selected phpstan level', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
         ->expectsChoice('PHPStan level', '8', ['5', '6', '7', '8', '9', 'max'])
@@ -387,6 +409,7 @@ it('scaffolds rector and pint when accepted', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'yes')
@@ -409,10 +432,145 @@ it('scaffolds rector and pint when accepted', function () {
         ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
 });
 
+it('writes the gitignore entries that init and boost cause to exist', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/.gitignore'))
+        ->toContain('/vendor/')
+        ->toContain('/composer.lock')
+        ->toContain('/CLAUDE.md')
+        ->toContain('/AGENTS.md')
+        ->toContain('/.mcp.json')
+        ->toContain('/.claude/skills/')
+        ->toContain('/.agents/')
+        ->toContain('/.junie/')
+        ->not->toContain('/artisan');
+});
+
+it('appends only the gitignore entries that are missing', function () {
+    file_put_contents($this->root.'/.gitignore', "/vendor/\n/CLAUDE.md\n");
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    $gitignore = file_get_contents($this->root.'/.gitignore');
+
+    expect(substr_count((string) $gitignore, '/vendor/'))->toBe(1)
+        ->and(substr_count((string) $gitignore, '/CLAUDE.md'))->toBe(1)
+        ->and($gitignore)->toStartWith("/vendor/\n/CLAUDE.md\n")
+        ->and($gitignore)->toContain('/.junie/');
+});
+
+it('composes a check script from the accepted tools', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
+        ->expectsConfirmation('Add Rector?', 'yes')
+        ->expectsConfirmation('Add Pint?', 'yes')
+        ->assertSuccessful();
+
+    $composerJson = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+
+    expect($composerJson['scripts']['check'])->toBe([
+        'pint --test',
+        'phpstan analyse',
+        'rector --dry-run',
+        'pest',
+    ]);
+});
+
+it('leaves the declined tools out of the check script', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    $composerJson = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+
+    expect($composerJson['scripts']['check'])->toBe(['pest']);
+});
+
+it('adds the workbench block to testbench.yaml when a workbench app is accepted', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'yes')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/testbench.yaml'))
+        ->toContain('workbench:')
+        ->toContain("start: '/'")
+        ->toContain('- create-sqlite-db')
+        ->toContain('Acme\Demo\DemoServiceProvider');
+});
+
+it('analyses workbench/app when the package has one', function () {
+    mkdir($this->root.'/workbench/app', 0755, true);
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
+        ->expectsConfirmation('Add Rector?', 'yes')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('- workbench/app')
+        ->and(file_get_contents($this->root.'/rector.php'))->toContain("__DIR__.'/workbench/app'");
+});
+
+it('leaves workbench/app out of the analysed paths when the package has none', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
+        ->expectsConfirmation('Add Rector?', 'yes')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->not->toContain('workbench')
+        ->and(file_get_contents($this->root.'/rector.php'))->not->toContain('workbench');
+});
+
 it('selects boost:install when the package has no boost.json', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')
@@ -427,6 +585,7 @@ it('selects boost:update --discover when the package already has boost.json', fu
     bindInit($this->root);
 
     $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
         ->expectsConfirmation('Add Rector?', 'no')

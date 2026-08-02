@@ -44,14 +44,22 @@ in its MCP config, its tool subprocesses, and its guideline text.
 vendor/bin/testbench package:init
 ```
 
-Installs Pest 5 and writes `phpunit.xml.dist` (sqlite `:memory:`), `tests/TestCase.php`,
-`tests/Pest.php` and `testbench.yaml` when they are missing, then asks about browser tests
-(`pest-plugin-browser`, a dummy test, and a `Browser` suite appended to `tests/Pest.php`), PHPStan
-(Larastan + the Pest PHPStan extension, writing `phpstan.neon.dist` plus a `stan` composer script),
-Rector (`rector.php` plus a `refactor` script) and Pint (`pint.json` plus a `lint` script). Existing
-files are never replaced without asking. It finishes by running `boost:install` (or `boost:update
---discover` when Boost is already set up) so the guidelines land in your `CLAUDE.md` / `AGENTS.md`
-without a second step.
+Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint, `phpunit.xml.dist`
+(sqlite `:memory:`), `tests/TestCase.php`, `tests/Pest.php` and `testbench.yaml` when they are
+missing, plus the `.gitignore` entries for everything it and Boost generate. Then it asks about:
+
+- **a workbench app** — adds the `workbench:` block to `testbench.yaml` and hands the namespaces,
+  directories and `autoload-dev` entries to Testbench's own `workbench:devtool`
+- **browser tests** — `pest-plugin-browser`, a dummy test, and a `Browser` suite in `tests/Pest.php`
+- **PHPStan** — Larastan + the Pest PHPStan extension, `phpstan.neon.dist`, a `stan` script
+- **Rector** — `rector.php` plus a `refactor` script
+- **Pint** — `pint.json` plus a `lint` script
+
+`src`, `tests` and, when present, `workbench/app` are the analysed paths. Alongside the per-tool
+scripts you get a `check` script composed of whichever tools you accepted, for CI and git hooks.
+Existing files are never replaced without asking. It finishes by running `boost:install` (or
+`boost:update --discover` when Boost is already set up) so the guidelines land in your `CLAUDE.md` /
+`AGENTS.md` without a second step.
 
 What `package:init` scaffolds requires PHP 8.4+ and `orchestra/testbench ^11`: Pest 5 needs PHPUnit 13
 and `symfony/process ^8.1`; testbench 10.x pulls in Laravel 12, which pins `symfony/process` to `^7.2`,
