@@ -1,7 +1,7 @@
 ## Comments
 
 - Code must be self-explanatory: reach for clear names, small functions, and types before a comment.
-- Do not add comments. A comment is a last resort and explains only *why* something is done, never *what* the code does.
+- Do not add comments by default. A comment is a last resort and explains only *why* something is done, never *what* the code does.
 - When you encounter an obsolete, redundant, or "what" comment, delete it.
 - Delete section banners and navigation comments unless they explain a non-obvious boundary.
 - Delete comments that narrate the next line, assertion, or obvious test setup; prefer clearer test names and variable names.
@@ -18,8 +18,9 @@
 ## Package development under Testbench
 
 - This package is developed with Orchestra Testbench, not a full Laravel app. There is no application skeleton in the repository.
-- `artisan` at the repo root is a symlink to `vendor/bin/testbench`, so `php artisan <command>` boots the Testbench skeleton with this package's service provider registered.
+- Run artisan commands with `vendor/bin/testbench <command>`. An `artisan` symlink to `vendor/bin/testbench` is created the first time a `boost:*` or `mcp:*` command runs, after which `php artisan <command>` is equivalent; if it is missing, create it with `ln -s vendor/bin/testbench artisan`.
 - `base_path()` points at the Testbench skeleton (`vendor/orchestra/testbench-core/laravel`), not at the package root, so never reach package files through it — use `Orchestra\Testbench\package_path()`. The one exception is `boost:*` and `mcp:*` commands, where this package deliberately rebases `base_path()` to the package root so Boost writes into the repository; nothing else should rely on that.
-- Configuration for the test application lives in `testbench.yaml`; extra app code for tests (providers, routes, migrations, models) lives in `workbench/`.
-- Run the test suite with `composer test`.
+- Configuration for the test application lives in `testbench.yaml`.
+- Extra app code for tests belongs in `workbench/`, which requires `Workbench\App\` and `Workbench\Database\Factories\` `autoload-dev` psr-4 entries, plus a `workbench:` block in `testbench.yaml` for providers and routes. If the package has neither, keep test-only app code under `tests/`.
+- Run the test suite with `composer test`, or `vendor/bin/pest` / `vendor/bin/phpunit` when no script is defined.
 - Regenerate `CLAUDE.md` and `AGENTS.md` with `vendor/bin/testbench boost:update` after editing anything in `.ai/guidelines/`.
