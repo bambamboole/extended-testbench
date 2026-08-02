@@ -88,7 +88,7 @@ final class InitCommand extends Command
 
     public function handle(): int
     {
-        if (! $this->input->isInteractive() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
+        if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
             error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
             note('Flags: --workbench --browser --playwright --phpstan --phpstan-level=6 --rector --pint, and --no-* for each.');
 
@@ -187,7 +187,7 @@ final class InitCommand extends Command
             return false;
         }
 
-        return $this->input->isInteractive()
+        return $this->canPrompt()
             ? confirm($question, default: $default)
             : $default;
     }
@@ -207,9 +207,26 @@ final class InitCommand extends Command
             return (string) $this->option('phpstan-level');
         }
 
-        return $this->input->isInteractive()
+        return $this->canPrompt()
             ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6')
             : '6';
+    }
+
+    /**
+     * Whether a prompt will actually reach a user. `$this->input->isInteractive()` alone is not
+     * enough: Symfony only flips it false when `--no-interaction` is passed explicitly, so a truly
+     * headless caller (a shell script, CI, an agent) that omits the flag would otherwise sail past
+     * here and every confirm()/select() would silently fall back to its default. Mirrors the real
+     * check Laravel's own ConfiguresPrompts::configurePrompts() uses, minus its runningUnitTests()
+     * fallback — keeping that would make this always true in the test suite and defeat the guard.
+     */
+    private function canPrompt(): bool
+    {
+        if (! $this->input->isInteractive()) {
+            return false;
+        }
+
+        return $this->laravel->runningUnitTests() || (defined('STDIN') && stream_isatty(STDIN));
     }
 
     private function pest(bool $browser, bool $workbench): void
