@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\Process;
 
 beforeEach(function () {
     $this->root = dirname(__DIR__, 2);
     $this->skeleton = $this->root.'/vendor/orchestra/testbench-core/laravel';
+
+    $this->originalBoostJson = file_exists($this->root.'/boost.json') ? file_get_contents($this->root.'/boost.json') : null;
+    $this->originalClaudeMd = file_exists($this->root.'/CLAUDE.md') ? file_get_contents($this->root.'/CLAUDE.md') : null;
 
     file_put_contents($this->root.'/boost.json', json_encode([
         'agents' => ['claude_code'],
@@ -26,11 +28,19 @@ beforeEach(function () {
 });
 
 afterEach(function () {
-    foreach (['/boost.json', '/CLAUDE.md', '/artisan'] as $file) {
-        @unlink($this->root.$file);
+    @unlink($this->root.'/artisan');
+
+    if ($this->originalBoostJson !== null) {
+        file_put_contents($this->root.'/boost.json', $this->originalBoostJson);
+    } else {
+        @unlink($this->root.'/boost.json');
     }
 
-    File::deleteDirectory($this->root.'/.ai/skills');
+    if ($this->originalClaudeMd !== null) {
+        file_put_contents($this->root.'/CLAUDE.md', $this->originalClaudeMd);
+    } else {
+        @unlink($this->root.'/CLAUDE.md');
+    }
 });
 
 test('boost:update writes guidelines to the package root, never the skeleton', function () {
