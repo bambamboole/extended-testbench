@@ -19,7 +19,7 @@
 
 - This package is developed with Orchestra Testbench, not a full Laravel app. There is no application skeleton in the repository.
 - `artisan` at the repo root is a symlink to `vendor/bin/testbench`, so `php artisan <command>` boots the Testbench skeleton with this package's service provider registered.
-- `base_path()` is the Testbench skeleton (`vendor/orchestra/testbench-core/laravel`), **not** the package root. Anything belonging to the package resolves through `Orchestra\Testbench\package_path()`.
+- `base_path()` points at the Testbench skeleton (`vendor/orchestra/testbench-core/laravel`), not at the package root, so never reach package files through it — use `Orchestra\Testbench\package_path()`. The one exception is `boost:*` and `mcp:*` commands, where this package deliberately rebases `base_path()` to the package root so Boost writes into the repository; nothing else should rely on that.
 - Configuration for the test application lives in `testbench.yaml`; extra app code for tests (providers, routes, migrations, models) lives in `workbench/`.
 - Run the test suite with `composer test`.
 - Regenerate `CLAUDE.md` and `AGENTS.md` with `vendor/bin/testbench boost:update` after editing anything in `.ai/guidelines/`.
