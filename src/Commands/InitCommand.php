@@ -205,6 +205,8 @@ final class InitCommand extends Command
         $gitkeep = $path.'/.gitkeep';
 
         if (file_exists($this->root.'/'.$gitkeep)) {
+            $this->results[] = [$path, 'skipped (exists)'];
+
             return;
         }
 

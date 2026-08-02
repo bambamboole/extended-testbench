@@ -112,6 +112,31 @@ it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit doe
         ->and($this->root.'/tests/Feature/.gitkeep')->toBeFile();
 });
 
+it('reports the test directories as skipped when their .gitkeep already exists', function () {
+    mkdir($this->root.'/tests/Unit', 0755, true);
+    mkdir($this->root.'/tests/Feature', 0755, true);
+    file_put_contents($this->root.'/tests/Unit/.gitkeep', '');
+    file_put_contents($this->root.'/tests/Feature/.gitkeep', '');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsPromptsTable(['File', 'Result'], [
+            ['tests/Unit', 'skipped (exists)'],
+            ['tests/Feature', 'skipped (exists)'],
+            ['phpunit.xml.dist', 'written'],
+            ['tests/TestCase.php', 'written'],
+            ['tests/Pest.php', 'written'],
+            ['testbench.yaml', 'written'],
+            ['composer script: test', 'added'],
+        ])
+        ->assertSuccessful();
+});
+
 it('records a failed outcome instead of a false "written" when a path is blocked by a file', function () {
     // A regular file named `tests` makes every `mkdir('tests/...', recursive: true)` fail with
     // "File exists", deterministically and regardless of the runner's UID (unlike chmod, which
