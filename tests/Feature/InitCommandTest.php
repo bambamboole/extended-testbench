@@ -60,6 +60,8 @@ it('scaffolds the pest baseline when everything else is declined', function () {
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/phpunit.xml.dist')->toBeFile()
@@ -102,6 +104,8 @@ it('keeps existing files when the overwrite prompt is declined', function () {
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'no')
         ->assertSuccessful();
 
@@ -117,6 +121,8 @@ it('overwrites an existing file when the prompt is accepted', function () {
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'yes')
         ->assertSuccessful();
 
@@ -130,6 +136,8 @@ it('scaffolds browser tests when accepted', function () {
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/tests/Browser/DummyTest.php')->toBeFile();
@@ -158,6 +166,8 @@ it('appends the browser suite to an existing Pest.php', function () {
         ->expectsConfirmation('Add browser tests?', 'yes')
         ->expectsConfirmation('Install Playwright browsers now?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->assertSuccessful();
 
     $pest = file_get_contents($this->root.'/tests/Pest.php');
@@ -174,6 +184,8 @@ it('does not scaffold browser tests when declined', function () {
     $this->artisan('package:init')
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/tests/Browser')->not->toBeDirectory();
@@ -186,6 +198,8 @@ it('scaffolds phpstan when accepted', function () {
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
         ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->assertSuccessful();
 
     expect($this->root.'/phpstan.neon.dist')->toBeFile();
@@ -208,7 +222,35 @@ it('writes the selected phpstan level', function () {
         ->expectsConfirmation('Add browser tests?', 'no')
         ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
         ->expectsChoice('PHPStan level', '8', ['5', '6', '7', '8', '9', 'max'])
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
         ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
+});
+
+it('scaffolds rector and pint when accepted', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'yes')
+        ->expectsConfirmation('Add Pint?', 'yes')
+        ->assertSuccessful();
+
+    expect($this->root.'/rector.php')->toBeFile()
+        ->and($this->root.'/pint.json')->toBeFile();
+
+    expect(file_get_contents($this->root.'/rector.php'))
+        ->toContain('RectorConfig::configure()')
+        ->toContain("__DIR__.'/src'");
+
+    expect(json_decode(file_get_contents($this->root.'/pint.json'), true))
+        ->toBe(['preset' => 'laravel', 'rules' => ['declare_strict_types' => true]]);
+
+    $composerJson = json_decode(file_get_contents($this->root.'/composer.json'), true);
+
+    expect($composerJson['scripts']['refactor'])->toBe('rector')
+        ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
 });

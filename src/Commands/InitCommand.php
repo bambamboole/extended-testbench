@@ -52,6 +52,9 @@ final class InitCommand extends Command
         $phpstan = confirm('Add PHPStan (Larastan)?', default: true);
         $level = $phpstan ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6') : '6';
 
+        $rector = confirm('Add Rector?', default: true);
+        $pint = confirm('Add Pint?', default: true);
+
         $this->pest($browser);
 
         if ($browser) {
@@ -64,6 +67,14 @@ final class InitCommand extends Command
 
         if ($phpstan) {
             $this->phpstan($level);
+        }
+
+        if ($rector) {
+            $this->rector();
+        }
+
+        if ($pint) {
+            $this->pint();
         }
 
         if ($this->autoloadChanged) {
@@ -146,6 +157,24 @@ final class InitCommand extends Command
         $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', ['level' => $level]);
 
         $this->script('stan', 'phpstan analyse');
+    }
+
+    private function rector(): void
+    {
+        $this->install(['rector/rector:^2.0']);
+
+        $this->write('rector.php', 'rector.php.stub');
+
+        $this->script('refactor', 'rector');
+    }
+
+    private function pint(): void
+    {
+        $this->install(['laravel/pint:^1.16']);
+
+        $this->write('pint.json', 'pint.json.stub');
+
+        $this->script('lint', 'pint --format agent');
     }
 
     /** @param  array<int, string>  $packages */
