@@ -14,6 +14,7 @@ use function Orchestra\Testbench\package_path;
 
 class ExtendedTestbenchServiceProvider extends ServiceProvider
 {
+    #[\Override]
     public function register(): void
     {
         if ($this->app->runningInConsole() && function_exists('Orchestra\Testbench\package_path')) {

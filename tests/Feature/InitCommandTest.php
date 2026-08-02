@@ -39,7 +39,7 @@ function bindInit(string $root, bool $installs = true): void
 {
     $composer = Mockery::mock(Composer::class.'[requirePackages,dumpAutoloads]', [new Filesystem, $root]);
     $composer->shouldReceive('requirePackages')->andReturn($installs);
-    $composer->shouldReceive('dumpAutoloads')->andReturnTrue();
+    $composer->shouldReceive('dumpAutoloads')->andReturn(true);
 
     app()->instance(InitCommand::class, new InitCommand($composer, $root));
 }

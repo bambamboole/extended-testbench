@@ -18,7 +18,7 @@ use function Laravel\Prompts\warning;
 
 final class InitCommand extends Command
 {
-    private const BROWSER_TESTSUITE = <<<'XML'
+    private const string BROWSER_TESTSUITE = <<<'XML'
 
             <testsuite name="Browser">
                 <directory>tests/Browser</directory>

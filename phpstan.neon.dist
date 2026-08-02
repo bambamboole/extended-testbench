@@ -8,3 +8,27 @@ parameters:
     paths:
         - src
         - tests
+
+    ignoreErrors:
+        -
+            # `Mockery::mock(Composer::class.'[requirePackages,dumpAutoloads]', [...])` uses
+            # partial-mock notation: the class name is a runtime-computed string, not a
+            # class-string<T> literal, so Mockery's `mock()` template can't infer TMock and
+            # the call resolves to a bare MockInterface. There is no phpstan/phpstan-mockery
+            # extension installed to narrow this, and the mock genuinely behaves like a
+            # Composer at runtime (partial mock, real class as base). Genuine false positive.
+            message: '#^Parameter \#1 \$composer of class Bambamboole\\ExtendedTestbench\\Commands\\InitCommand constructor expects Illuminate\\Support\\Composer, Mockery\\MockInterface given\.$#'
+            identifier: argument.type
+            count: 1
+            path: tests/Feature/InitCommandTest.php
+
+        -
+            # `toBeInstanceOf()` is statically redundant here (Larastan already narrows
+            # `$this->app->make(InitCommand::class)` to InitCommand), but the assertion has
+            # real runtime value: it verifies the container actually resolves the concrete
+            # class rather than e.g. a misconfigured binding. Removing it would drop test
+            # coverage, so it stays and the static-analysis opinion is ignored instead.
+            message: '#^Calling toBeInstanceOf\(\) on Expectation\<Bambamboole\\ExtendedTestbench\\Commands\\InitCommand\>; assertion is redundant\.$#'
+            identifier: pest.expectation.redundant
+            count: 1
+            path: tests/Feature/InitCommandTest.php
