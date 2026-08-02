@@ -6,6 +6,7 @@ use Bambamboole\ExtendedTestbench\Commands\InitCommand;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Composer;
+use Mockery\MockInterface;
 
 beforeEach(function () {
     $this->root = sys_get_temp_dir().'/etb-init-'.bin2hex(random_bytes(4));
@@ -37,6 +38,7 @@ afterEach(function () {
  */
 function bindInit(string $root, bool $installs = true): void
 {
+    /** @var Composer&MockInterface $composer */
     $composer = Mockery::mock(Composer::class.'[requirePackages,dumpAutoloads]', [new Filesystem, $root]);
     $composer->shouldReceive('requirePackages')->andReturn($installs);
     $composer->shouldReceive('dumpAutoloads')->andReturn(true);
@@ -49,7 +51,7 @@ it('registers the package:init command', function () {
         ->toContain('package:init');
 });
 
-it('builds the command with the package root and a composer instance', function () {
+it('resolves the InitCommand singleton bound as package:init', function () {
     $command = $this->app->make(InitCommand::class);
 
     expect($this->app->make(InitCommand::class))->toBe($command)
@@ -375,7 +377,7 @@ it('scaffolds rector and pint when accepted', function () {
         ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
 });
 
-it('runs boost:install when the package has no boost.json', function () {
+it('selects boost:install when the package has no boost.json', function () {
     bindInit($this->root);
 
     $this->artisan('package:init')
@@ -387,7 +389,7 @@ it('runs boost:install when the package has no boost.json', function () {
         ->assertSuccessful();
 });
 
-it('runs boost:update --discover when the package already has boost.json', function () {
+it('selects boost:update --discover when the package already has boost.json', function () {
     file_put_contents($this->root.'/boost.json', '{"guidelines":true}');
 
     bindInit($this->root);
