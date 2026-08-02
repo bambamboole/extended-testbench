@@ -239,7 +239,7 @@ final class InitCommand extends Command
 
         $this->write('tests/Pest.php', 'Pest.php.stub', [
             'test_case' => '\\'.$this->testNamespace().'TestCase',
-            'suites' => $browser ? "'Feature', 'Unit', 'Browser'" : "'Feature', 'Unit'",
+            'suites' => "'Feature', 'Unit'",
         ], onlyIfMissing: true);
 
         $this->write('testbench.yaml', 'testbench.yaml.stub', [
@@ -283,6 +283,10 @@ final class InitCommand extends Command
     {
         $this->install(['pestphp/pest-plugin-browser:^5.0']);
 
+        $this->write('tests/BrowserTestCase.php', 'BrowserTestCase.php.stub', [
+            'namespace' => rtrim($this->testNamespace(), '\\'),
+        ], onlyIfMissing: true);
+
         $this->write('tests/Browser/DummyTest.php', 'BrowserDummyTest.php.stub');
 
         $this->script('test:browser', file_exists($this->root.'/package.json')
@@ -297,7 +301,7 @@ final class InitCommand extends Command
 
         file_put_contents(
             $pest,
-            sprintf("\nuses(\\%sTestCase::class)->in('Browser');\n", $this->testNamespace()),
+            sprintf("\nuses(\\%sBrowserTestCase::class)->in('Browser');\n", $this->testNamespace()),
             FILE_APPEND,
         );
 

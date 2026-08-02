@@ -1,0 +1,58 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Pest\Browser\Playwright\Playwright;
+use RuntimeException;
+
+use function Orchestra\Testbench\package_path;
+
+abstract class BrowserTestCase extends TestCase
+{
+    private static bool $checkedManifest = false;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->assertBuiltAssetsExist();
+
+        // CI runners are slower than Playwright's 5s default, which intermittently
+        // trips browser actions under load.
+        Playwright::setTimeout(15_000);
+    }
+
+    /**
+     * The browser serves whatever the last build produced, so a missing manifest or a
+     * leftover dev-server marker fails every test with a blank page. Fail fast instead —
+     * but only for packages that actually build assets.
+     */
+    private function assertBuiltAssetsExist(): void
+    {
+        if (self::$checkedManifest) {
+            return;
+        }
+
+        if (! is_file(package_path('vite.config.ts')) && ! is_file(package_path('vite.config.js'))) {
+            self::$checkedManifest = true;
+
+            return;
+        }
+
+        $public = package_path('vendor/orchestra/testbench-core/laravel/public');
+        $manifest = $public.'/build/manifest.json';
+        $hot = $public.'/hot';
+
+        if (! is_file($manifest)) {
+            throw new RuntimeException("Missing workbench Vite manifest [{$manifest}]. Run `npm run build` before the browser suite (`composer test:browser` does it for you).");
+        }
+
+        if (is_file($hot)) {
+            throw new RuntimeException("Stale Vite hot file [{$hot}]. Delete it (a `composer serve` leftover), then rerun the browser suite.");
+        }
+
+        self::$checkedManifest = true;
+    }
+}

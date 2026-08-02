@@ -345,7 +345,8 @@ it('scaffolds browser tests when accepted', function () {
         ->toContain('<directory>tests/Browser</directory>');
 
     expect(file_get_contents($this->root.'/tests/Pest.php'))
-        ->toContain("->in('Feature', 'Unit', 'Browser');");
+        ->toContain("->in('Feature', 'Unit');")
+        ->toContain("uses(\\Tests\\BrowserTestCase::class)->in('Browser');");
 
     expect(file_get_contents($this->root.'/tests/Browser/DummyTest.php'))
         ->toContain("visit('/dummy')");
@@ -389,6 +390,38 @@ it('does not scaffold browser tests when declined', function () {
         ->assertSuccessful();
 
     expect($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
+it('writes a browser test case that guards the vite manifest', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--defaults' => true,
+    ])->assertSuccessful();
+
+    expect($this->root.'/tests/BrowserTestCase.php')->toBeFile();
+
+    $testCase = (string) file_get_contents($this->root.'/tests/BrowserTestCase.php');
+
+    expect($testCase)->toContain('namespace Tests;')
+        ->toContain('abstract class BrowserTestCase extends TestCase')
+        ->toContain('vite.config')
+        ->toContain('manifest.json');
+
+    expect(file_get_contents($this->root.'/tests/Pest.php'))
+        ->toContain("uses(\\Tests\\BrowserTestCase::class)->in('Browser');");
+});
+
+it('does not write a browser test case when browser tests are declined', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/BrowserTestCase.php')->not->toBeFile();
 });
 
 it('scaffolds phpstan when accepted', function () {
