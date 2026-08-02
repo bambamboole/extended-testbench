@@ -74,13 +74,17 @@ it('declares a single workbench/app artifact', function () {
     expect(flaggedLabels((new WorkbenchFeature)->artifacts(makeContext())))->toBe(['workbench/app']);
 });
 
-it('declares the browser artifacts in the original row order', function () {
+it('declares the browser artifacts in the original row order, locked so it cannot drift', function () {
+    // InitCommand::browser() emits install(), the two write()s, script('test:browser', ...), THEN
+    // the tests/Pest.php suite-line append — Script comes before PestSuiteLine, not after. Pinned
+    // here because none of the four expectsPromptsTable assertions in InitCommandTest.php exercise
+    // this feature (browser is declined in all of them), so nothing else guards this order.
     expect(flaggedLabels((new BrowserFeature)->artifacts(makeContext())))->toBe([
         'pestphp/pest-plugin-browser:^5.0',
         'tests/BrowserTestCase.php',
         'tests/Browser/DummyTest.php',
-        'tests/Pest.php',
         'composer script: test:browser',
+        'tests/Pest.php',
     ]);
 });
 
@@ -176,7 +180,7 @@ it('runs npm run build before the browser suite when package.json exists', funct
     file_put_contents($context->path('package.json'), '{}');
 
     $artifacts = iterator_to_array((new BrowserFeature)->artifacts($context), false);
-    applyOne($artifacts[4], $context); // composer script: test:browser
+    applyOne($artifacts[3], $context); // composer script: test:browser
 
     expect($context->composerJson()['scripts']['test:browser'])->toBe(['npm run build', 'pest --testsuite=Browser']);
 });
@@ -185,7 +189,7 @@ it('runs pest directly for the browser suite when there is no package.json', fun
     $context = makeContext();
 
     $artifacts = iterator_to_array((new BrowserFeature)->artifacts($context), false);
-    applyOne($artifacts[4], $context);
+    applyOne($artifacts[3], $context);
 
     expect($context->composerJson()['scripts']['test:browser'])->toBe('pest --testsuite=Browser');
 });
@@ -199,7 +203,7 @@ it('maps the Browser suite to the BrowserTestCase in the resolved test namespace
     );
 
     $artifacts = iterator_to_array((new BrowserFeature)->artifacts($context), false);
-    applyOne($artifacts[3], $context); // PestSuiteLine
+    applyOne($artifacts[4], $context); // PestSuiteLine
 
     expect(file_get_contents($context->path('tests/Pest.php')))
         ->toContain("uses(\\Tests\\BrowserTestCase::class)->in('Browser');");

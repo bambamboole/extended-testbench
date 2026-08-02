@@ -27,10 +27,10 @@ final readonly class BrowserFeature implements Feature
 
         yield new StubFile('tests/Browser/DummyTest.php', 'BrowserDummyTest.php.stub');
 
-        yield new PestSuiteLine('Browser', $context->testNamespace().'BrowserTestCase');
-
         yield new Script('test:browser', file_exists($context->path('package.json'))
             ? ['npm run build', 'pest --testsuite=Browser']
             : 'pest --testsuite=Browser');
+
+        yield new PestSuiteLine('Browser', $context->testNamespace().'BrowserTestCase');
     }
 }
