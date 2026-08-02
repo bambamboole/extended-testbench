@@ -40,6 +40,9 @@ final class InitCommand extends Command
     /** @var array<int, array{0: string, 1: string}> */
     private array $results = [];
 
+    /** @var array<int, Flag>|null */
+    private ?array $flags = null;
+
     public function __construct(
         private readonly Composer $composer,
         private readonly string $root,
@@ -67,7 +70,8 @@ final class InitCommand extends Command
 
         if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->checking() && ! $this->hasSectionFlag()) {
             error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
-            note('Flags: --workbench --browser --playwright --phpstan --rector --pint, and --no-* for each.');
+            $flagNames = implode(' ', array_map(static fn (Flag $flag): string => "--{$flag->name}", $this->flags()));
+            note("Flags: {$flagNames}, and --no-* for each.");
 
             return self::FAILURE;
         }
@@ -118,6 +122,9 @@ final class InitCommand extends Command
         $this->scaffold($context, $level);
 
         if ($context->autoloadChanged()) {
+            // Not inert: Composer::dumpAutoloads() runs `composer dump-autoload` without
+            // --no-scripts, so it fires this same run's freshly written post-autoload-dump script —
+            // package:purge-skeleton and package:discover, two subprocesses — as a side effect.
             $this->composer->dumpAutoloads();
         }
 
@@ -197,10 +204,18 @@ final class InitCommand extends Command
         ];
     }
 
-    /** @return array<int, Flag> */
+    /**
+     * Memoized so __construct(), the enabled-flags loop and hasSectionFlag() all read the exact
+     * same list instead of each rebuilding it (three or four times, previously): a Feature's flag
+     * never depends on the phpstan level (only PhpstanFeature's artifacts do), so resolving this
+     * once, from features() at its default level, can never diverge from what scaffold() later
+     * runs at the resolved level.
+     *
+     * @return array<int, Flag>
+     */
     private function flags(): array
     {
-        return array_values(array_filter(array_map(
+        return $this->flags ??= array_values(array_filter(array_map(
             static fn (Feature $feature): ?Flag => $feature->flag(),
             $this->features(),
         )));
