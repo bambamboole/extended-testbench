@@ -4,9 +4,25 @@ declare(strict_types=1);
 
 namespace Bambamboole\ExtendedTestbench\Commands;
 
+use Bambamboole\ExtendedTestbench\Features\BoostFeature;
+use Bambamboole\ExtendedTestbench\Features\BrowserFeature;
+use Bambamboole\ExtendedTestbench\Features\CiFeature;
+use Bambamboole\ExtendedTestbench\Features\ComposerScriptsFeature;
+use Bambamboole\ExtendedTestbench\Features\Context;
+use Bambamboole\ExtendedTestbench\Features\EntrypointFeature;
+use Bambamboole\ExtendedTestbench\Features\Feature;
+use Bambamboole\ExtendedTestbench\Features\Flag;
+use Bambamboole\ExtendedTestbench\Features\GitFeature;
+use Bambamboole\ExtendedTestbench\Features\GitignoreFeature;
+use Bambamboole\ExtendedTestbench\Features\PestFeature;
+use Bambamboole\ExtendedTestbench\Features\PhpstanFeature;
+use Bambamboole\ExtendedTestbench\Features\PintFeature;
+use Bambamboole\ExtendedTestbench\Features\PlaywrightFeature;
+use Bambamboole\ExtendedTestbench\Features\RectorFeature;
+use Bambamboole\ExtendedTestbench\Features\Status;
+use Bambamboole\ExtendedTestbench\Features\WorkbenchFeature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Composer;
-use Symfony\Component\Process\Process;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
@@ -19,82 +35,43 @@ use function Laravel\Prompts\warning;
 
 final class InitCommand extends Command
 {
-    private const string BROWSER_TESTSUITE = <<<'XML'
-
-            <testsuite name="Browser">
-                <directory>tests/Browser</directory>
-            </testsuite>
-    XML;
-
-    private const string WORKBENCH_BLOCK = <<<'YAML'
-
-        workbench:
-          start: '/'
-          welcome: false
-          discovers:
-            web: true
-          build:
-            - create-sqlite-db
-            - migrate:fresh
-        YAML;
-
-    /** @var array<int, string> */
-    private const array GITIGNORE_ENTRIES = [
-        '/vendor/',
-        '/composer.lock',
-        '/.phpunit.cache/',
-        '/CLAUDE.md',
-        '/AGENTS.md',
-        '/.mcp.json',
-        '/.claude/skills/',
-        '/.agents/',
-        '/.junie/',
-        '/.codex/',
-        '/.superpowers/',
-        '/docs/superpowers/',
-    ];
-
-    protected $signature = 'package:init
-        {--defaults : Accept every default without prompting}
-        {--force : Replace the generated config files instead of skipping the ones that exist}
-        {--workbench : Scaffold a workbench app}
-        {--no-workbench : Skip the workbench app}
-        {--browser : Add browser tests}
-        {--no-browser : Skip browser tests}
-        {--playwright : Install Playwright browsers}
-        {--no-playwright : Skip installing Playwright browsers}
-        {--phpstan : Add PHPStan (Larastan)}
-        {--no-phpstan : Skip PHPStan}
-        {--phpstan-level=6 : The PHPStan level to write}
-        {--rector : Add Rector}
-        {--no-rector : Skip Rector}
-        {--pint : Add Pint}
-        {--no-pint : Skip Pint}';
-
     protected $description = 'Scaffold Pest, static analysis and formatting for this package';
 
     /** @var array<int, array{0: string, 1: string}> */
     private array $results = [];
 
-    /** @var array<int, string> */
-    private array $failedInstalls = [];
-
-    private ?string $testNamespace = null;
-
-    private bool $autoloadChanged = false;
+    /** @var array<int, Flag>|null */
+    private ?array $flags = null;
 
     public function __construct(
         private readonly Composer $composer,
         private readonly string $root,
     ) {
+        // Every section flag comes from the feature that owns it, so a new feature ships its own
+        // --name/--no-name pair rather than needing this string edited alongside it.
+        $this->signature = 'package:init
+        {--check : Report how this package diverges from the scaffold and write nothing}
+        {--defaults : Accept every default without prompting}
+        {--force : Replace the generated config files instead of skipping the ones that exist}
+        {--phpstan-level=6 : The PHPStan level to write}'.implode('', array_map(
+            static fn (Flag $flag): string => "\n        {--{$flag->name} : {$flag->description}}\n        {--no-{$flag->name} : {$flag->skipDescription}}",
+            $this->flags(),
+        ));
+
         parent::__construct();
     }
 
     public function handle(): int
     {
-        if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
+        // The command is a container singleton and Artisan caches the instance it resolves, so a
+        // second invocation in the same process (a --check after an init, anything programmatic)
+        // would otherwise report the first run's rows on top of its own.
+        $this->results = [];
+
+        if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->checking() && ! $this->hasSectionFlag()) {
             error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
-            note('Flags: --workbench --browser --playwright --phpstan --rector --pint, and --no-* for each.');
+            $flagNames = implode(' ', array_map(static fn (Flag $flag): string => "--{$flag->name}", $this->flags()));
+            note("Flags: {$flagNames}, and --no-* for each.");
 
             return self::FAILURE;
         }
@@ -105,90 +82,152 @@ final class InitCommand extends Command
             return self::FAILURE;
         }
 
-        intro('extended-testbench: package init');
+        intro($this->checking() ? 'extended-testbench: package drift check' : 'extended-testbench: package init');
 
-        $workbench = $this->resolve('workbench', 'Add a workbench app?', false);
+        $enabled = [];
+        $level = '6';
 
-        $browser = $this->resolve('browser', 'Add browser tests?', false);
-        $playwright = $browser && $this->resolve('playwright', 'Install Playwright browsers now?', false);
+        foreach ($this->flags() as $flag) {
+            // Playwright is gated on browser tests and is not even asked without them: installing
+            // browsers nothing will drive is never what the answer meant.
+            if ($flag->name === 'playwright' && ! ($enabled['browser'] ?? false)) {
+                $enabled['playwright'] = false;
 
-        if ($this->option('playwright') === true && ! $playwright) {
-            warning('--playwright has no effect because browser tests resolved false. Pass --browser as well.');
+                if ($this->option('playwright') === true) {
+                    warning('--playwright has no effect because browser tests resolved false. Pass --browser as well.');
+                }
+
+                continue;
+            }
+
+            $enabled[$flag->name] = $this->resolve($flag->name, $flag->question, $flag->default);
+
+            // The level question belongs to the phpstan answer, so it is asked right after it
+            // rather than after every section has been decided.
+            if ($flag->name === 'phpstan') {
+                $level = $this->phpstanLevel($enabled['phpstan']);
+            }
         }
 
-        $phpstan = $this->resolve('phpstan', 'Add PHPStan (Larastan)?', true);
-        $level = $this->phpstanLevel($phpstan);
+        $context = new Context(
+            root: $this->root,
+            composer: $this->composer,
+            output: $this->output,
+            checking: $this->checking(),
+            force: $this->option('force') === true,
+            canPrompt: $this->canPrompt(),
+            enabled: $enabled,
+        );
 
-        $rector = $this->resolve('rector', 'Add Rector?', true);
-        $pint = $this->resolve('pint', 'Add Pint?', true);
+        $this->scaffold($context, $level);
 
-        $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
-        $this->write('.gitattributes', 'gitattributes.stub', onlyIfMissing: true);
-
-        if (is_link($this->root.'/artisan')) {
-            warning('artisan is a symlink, not the shim this package now writes. Both work; replace it with `rm artisan` followed by a rerun if you want the committed shim.');
-        }
-
-        $this->gitignore();
-
-        $this->pest($browser, $workbench);
-
-        if ($workbench) {
-            $this->workbench();
-        }
-
-        if ($browser) {
-            $this->browser();
-        }
-
-        if ($playwright) {
-            $this->playwright();
-        }
-
-        if ($phpstan) {
-            $this->phpstan($level);
-        }
-
-        if ($rector) {
-            $this->rector();
-        }
-
-        if ($pint) {
-            $this->pint();
-        }
-
-        $this->script('check', array_values(array_filter([
-            $pint ? 'pint --test' : null,
-            $phpstan ? 'phpstan analyse' : null,
-            $rector ? 'rector --dry-run' : null,
-            '@test',
-        ])));
-
-        $this->script('post-autoload-dump', [
-            '@php vendor/bin/testbench package:purge-skeleton --ansi',
-            '@php vendor/bin/testbench package:discover --ansi',
-        ]);
-
-        $this->script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true');
-        $this->script('post-install-cmd', ['@boost:refresh']);
-        $this->script('post-update-cmd', ['@boost:refresh']);
-
-        if ($this->autoloadChanged) {
+        if ($context->autoloadChanged()) {
+            // Not inert: Composer::dumpAutoloads() runs `composer dump-autoload` without
+            // --no-scripts, so it fires this same run's freshly written post-autoload-dump script —
+            // package:purge-skeleton and package:discover, two subprocesses — as a side effect.
             $this->composer->dumpAutoloads();
         }
 
-        $this->boost();
-        $this->registerGuideline();
+        if ($this->checking()) {
+            $this->applyCheckIgnores();
+        }
 
-        table(['File', 'Result'], $this->results);
+        table($this->checking() ? ['File', 'Drift'] : ['File', 'Result'], $this->results);
 
-        if ($this->failedInstalls !== []) {
-            error('Failed to install: '.implode(', ', $this->failedInstalls));
+        if ($this->checking()) {
+            return $this->reportDrift();
+        }
+
+        if ($context->failedInstalls() !== []) {
+            error('Failed to install: '.implode(', ', $context->failedInstalls()));
         }
 
         outro('Done.');
 
-        return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
+        return $context->failedInstalls() === [] ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * One feature at a time, one artifact at a time, each applied before the next is asked for.
+     * The laziness is load-bearing rather than an optimisation: workbench:devtool creates
+     * workbench/app, and PhpstanFeature only reads that directory when its artifact is yielded, so
+     * materialising a feature's artifacts up front would drop `- workbench/app` from
+     * phpstan.neon.dist on the very run that created it. BoostFeature reads boost.json the same way.
+     */
+    private function scaffold(Context $context, string $level): void
+    {
+        foreach ($this->features($level) as $feature) {
+            $flag = $feature->flag();
+
+            if ($flag !== null && ! $context->enabled($flag->name)) {
+                continue;
+            }
+
+            foreach ($feature->artifacts($context) as $artifact) {
+                $results = $context->checking() ? $artifact->drift($context) : $artifact->apply($context);
+
+                foreach ($results as $result) {
+                    // A subprocess that was never run has nothing to report: the row would be noise
+                    // in the drift table and a false positive in the exit code.
+                    if ($result->status === Status::NotCheckable) {
+                        continue;
+                    }
+
+                    $this->results[] = [$result->label, $result->describe()];
+                }
+            }
+        }
+    }
+
+    /**
+     * The order is the table: it is what every expectsPromptsTable assertion pins, and why
+     * `.gitignore` is its own feature — `ci.yml` sits between `.gitattributes` and it.
+     *
+     * @return array<int, Feature>
+     */
+    private function features(string $level = '6'): array
+    {
+        return [
+            new EntrypointFeature,
+            new GitFeature,
+            new CiFeature,
+            new GitignoreFeature,
+            new PestFeature,
+            new WorkbenchFeature,
+            new BrowserFeature,
+            new PlaywrightFeature,
+            new PhpstanFeature($level),
+            new RectorFeature,
+            new PintFeature,
+            new ComposerScriptsFeature,
+            new BoostFeature,
+        ];
+    }
+
+    /**
+     * Memoized so __construct(), the enabled-flags loop and hasSectionFlag() all read the exact
+     * same list instead of each rebuilding it (three or four times, previously): a Feature's flag
+     * never depends on the phpstan level (only PhpstanFeature's artifacts do), so resolving this
+     * once, from features() at its default level, can never diverge from what scaffold() later
+     * runs at the resolved level.
+     *
+     * @return array<int, Flag>
+     */
+    private function flags(): array
+    {
+        return $this->flags ??= array_values(array_filter(array_map(
+            static fn (Feature $feature): ?Flag => $feature->flag(),
+            $this->features(),
+        )));
+    }
+
+    /**
+     * Whether this run only reports drift. Every mutation is gated on it: no writes, no
+     * `composer require`, no composer.json edits, and none of the subprocesses.
+     */
+    private function checking(): bool
+    {
+        return $this->option('check') === true;
     }
 
     private function resolve(string $name, string $question, bool $default): bool
@@ -201,7 +240,9 @@ final class InitCommand extends Command
             return false;
         }
 
-        if ($this->option('defaults') === true) {
+        // --check answers for itself: a drift report that stopped to ask six questions would be
+        // useless to the CI job and the agent it exists for. Section flags still narrow it.
+        if ($this->option('defaults') === true || $this->checking()) {
             return $default;
         }
 
@@ -212,7 +253,7 @@ final class InitCommand extends Command
 
     private function hasSectionFlag(): bool
     {
-        return array_any(['workbench', 'browser', 'playwright', 'phpstan', 'rector', 'pint'], fn (string $section): bool => $this->option($section) === true || $this->option('no-'.$section) === true);
+        return array_any($this->flags(), fn (Flag $flag): bool => $this->option($flag->name) === true || $this->option('no-'.$flag->name) === true);
     }
 
     private function phpstanLevel(bool $phpstan): string
@@ -225,7 +266,7 @@ final class InitCommand extends Command
             return (string) $this->option('phpstan-level');
         }
 
-        if ($this->option('defaults') === true) {
+        if ($this->option('defaults') === true || $this->checking()) {
             return '6';
         }
 
@@ -251,460 +292,57 @@ final class InitCommand extends Command
         return $this->laravel->runningUnitTests() || (defined('STDIN') && stream_isatty(STDIN));
     }
 
-    private function pest(bool $browser, bool $workbench): void
-    {
-        $this->install(['pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0']);
-
-        $this->testDirectory('tests/Unit');
-        $this->testDirectory('tests/Feature');
-
-        $this->write('phpunit.xml.dist', 'phpunit.xml.dist.stub', [
-            'browser_testsuite' => $browser ? self::BROWSER_TESTSUITE : '',
-        ]);
-
-        $this->warnIfShadowed('phpunit.xml.dist');
-
-        if ($browser && ! str_contains((string) @file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
-            warning('phpunit.xml.dist does not include the Browser testsuite — add it by hand.');
-        }
-
-        $this->write('tests/TestCase.php', 'TestCase.php.stub', [
-            'namespace' => rtrim($this->testNamespace(), '\\'),
-            'providers' => implode(', ', array_map(
-                static fn (string $provider): string => '\\'.ltrim($provider, '\\').'::class',
-                $this->providers(),
-            )),
-        ], onlyIfMissing: true);
-
-        $this->write('tests/Pest.php', 'Pest.php.stub', [
-            'test_case' => '\\'.$this->testNamespace().'TestCase',
-            'suites' => "'Feature', 'Unit'",
-        ], onlyIfMissing: true);
-
-        $this->write('testbench.yaml', 'testbench.yaml.stub', [
-            'providers' => $this->providers() === [] ? '' : "\nproviders:\n".implode("\n", array_map(
-                static fn (string $provider): string => '  - '.ltrim($provider, '\\'),
-                $this->providers(),
-            ))."\n",
-            'workbench' => $workbench ? self::WORKBENCH_BLOCK : '',
-        ], onlyIfMissing: true);
-
-        $this->script('test', $browser ? 'pest --testsuite=Unit,Feature' : 'pest');
-    }
-
     /**
-     * Namespaces, directories and the composer autoload-dev entries a workbench app needs are
-     * Testbench's own job — workbench:devtool writes them, and it resolves package_path() itself.
+     * A drift report that cannot be silenced is unusable as a CI gate: a package legitimately has no
+     * tests/Unit, or a stricter phpunit.xml.dist, and the only route to green would be degrading
+     * both. Rows named in composer.json's extra.extended-testbench.check-ignore stay visible but
+     * stop counting, so the exit code tracks unintended drift only.
      */
-    private function workbench(): void
+    private function applyCheckIgnores(): void
     {
-        $binary = $this->root.'/vendor/bin/testbench';
-
-        if (! is_file($binary)) {
-            $this->results[] = ['workbench:devtool', 'skipped (no vendor/bin/testbench)'];
-            note('Run vendor/bin/testbench workbench:devtool to finish the workbench setup.');
-
-            return;
-        }
-
-        $process = new Process(
-            [PHP_BINARY, 'vendor/bin/testbench', 'workbench:devtool', '--no-interaction'],
-            $this->root,
-            timeout: null,
+        $ignored = array_map(
+            static fn (mixed $entry): string => (string) $entry,
+            array_values((array) ($this->composerJson()['extra']['extended-testbench']['check-ignore'] ?? [])),
         );
 
-        $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
-
-        $this->results[] = ['workbench:devtool', $process->isSuccessful() ? 'ran' : 'failed'];
-    }
-
-    private function browser(): void
-    {
-        $this->install(['pestphp/pest-plugin-browser:^5.0']);
-
-        $this->write('tests/BrowserTestCase.php', 'BrowserTestCase.php.stub', [
-            'namespace' => rtrim($this->testNamespace(), '\\'),
-        ], onlyIfMissing: true);
-
-        $this->write('tests/Browser/DummyTest.php', 'BrowserDummyTest.php.stub');
-
-        $this->script('test:browser', file_exists($this->root.'/package.json')
-            ? ['npm run build', 'pest --testsuite=Browser']
-            : 'pest --testsuite=Browser');
-
-        $pest = $this->root.'/tests/Pest.php';
-
-        if (! file_exists($pest)) {
+        if ($ignored === []) {
             return;
         }
 
-        $contents = (string) file_get_contents($pest);
-
-        if (str_contains($contents, "'Browser'")) {
-            if (! str_contains($contents, 'BrowserTestCase')) {
-                warning("tests/Pest.php already maps 'Browser' to the base TestCase. Change that line to uses(\\{$this->testNamespace()}BrowserTestCase::class)->in('Browser'); so the Vite guard runs.");
+        foreach ($this->results as $index => $row) {
+            if ($row[1] !== 'ok' && in_array($row[0], $ignored, true)) {
+                $this->results[$index] = [$row[0], "ignored ({$row[1]})"];
             }
-
-            return;
         }
-
-        file_put_contents(
-            $pest,
-            sprintf("\nuses(\\%sBrowserTestCase::class)->in('Browser');\n", $this->testNamespace()),
-            FILE_APPEND,
-        );
-
-        $this->results[] = ['tests/Pest.php', 'browser suite appended'];
     }
 
-    private function playwright(): void
+    private function reportDrift(): int
     {
-        $process = new Process(['npx', 'playwright', 'install'], $this->root, timeout: null);
-
-        $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
-
-        $this->results[] = ['npx playwright install', $process->isSuccessful() ? 'ran' : 'failed'];
-    }
-
-    private function phpstan(string $level): void
-    {
-        $this->install(['larastan/larastan:^3.0', 'pestphp/pest-plugin-phpstan:^5.0']);
-
-        $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', [
-            'level' => $level,
-            'workbench_path' => $this->hasWorkbench() ? "\n        - workbench/app" : '',
-            'database_path' => $this->hasDatabase() ? "\n        - database" : '',
-        ]);
-
-        $this->warnIfShadowed('phpstan.neon.dist');
-
-        $this->script('stan', 'phpstan analyse');
-    }
-
-    private function rector(): void
-    {
-        $this->install(['rector/rector:^2.0']);
-
-        $this->write('rector.php', 'rector.php.stub', [
-            'workbench_path' => $this->hasWorkbench() ? ", __DIR__.'/workbench/app'" : '',
-        ]);
-
-        $this->script('refactor', 'rector');
-    }
-
-    private function hasWorkbench(): bool
-    {
-        return is_dir($this->root.'/workbench/app');
-    }
-
-    private function hasDatabase(): bool
-    {
-        return is_dir($this->root.'/database');
-    }
-
-    private function gitignore(): void
-    {
-        $path = $this->root.'/.gitignore';
-        $contents = file_exists($path) ? (string) @file_get_contents($path) : '';
-
-        // Both slashes go: git treats `vendor`, `/vendor` and `vendor/` as the same intent here, and
-        // keeping either one would append a duplicate entry next to the line already ignoring it.
-        $normalise = static fn (string $line): string => trim(trim($line), '/');
-
-        $present = array_map($normalise, preg_split('/\R/', $contents) ?: []);
-        $missing = array_values(array_filter(
-            self::GITIGNORE_ENTRIES,
-            static fn (string $entry): bool => ! in_array($normalise($entry), $present, true),
+        $drifted = array_values(array_filter(
+            $this->results,
+            static fn (array $row): bool => $row[1] !== 'ok' && ! str_starts_with($row[1], 'ignored'),
         ));
 
-        if ($missing === []) {
-            $this->results[] = ['.gitignore', 'skipped (nothing to add)'];
+        if ($drifted === []) {
+            outro('No drift: this package matches the scaffold.');
 
-            return;
+            return self::SUCCESS;
         }
 
-        $prefix = $contents === '' ? '' : rtrim($contents, "\n")."\n";
+        warning(sprintf('%d of %d checks diverge from the scaffold. Nothing was written.', count($drifted), count($this->results)));
 
-        if (@file_put_contents($path, $prefix.implode("\n", $missing)."\n") === false) {
-            $this->results[] = ['.gitignore', 'failed'];
-
-            return;
+        foreach ($drifted as $row) {
+            note("{$row[0]}: {$row[1]}");
         }
 
-        $this->results[] = ['.gitignore', $contents === '' ? 'written' : 'updated'];
-    }
+        note('Run package:init without --check to scaffold what is missing, adding --force to replace the generated configs that differ.');
 
-    private function pint(): void
-    {
-        $this->install(['laravel/pint:^1.16']);
-
-        $this->write('pint.json', 'pint.json.stub');
-
-        $this->script('lint', 'pint --format agent');
-    }
-
-    private function boost(): void
-    {
-        $command = $this->boostCommand();
-        $label = implode(' ', $command);
-
-        if (! is_file($this->root.'/vendor/bin/testbench')) {
-            $this->results[] = [$label, 'skipped (no vendor/bin/testbench)'];
-            note("Run vendor/bin/testbench {$label} to compose the guidelines.");
-
-            return;
-        }
-
-        if (Process::isTtySupported()) {
-            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command], $this->root, timeout: null);
-            $process->setTty(true);
-            $process->run();
-        } else {
-            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command, '--no-interaction'], $this->root, timeout: null);
-            $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
-        }
-
-        if (! $process->isSuccessful()) {
-            note("Boost's commands are only registered in a local environment. Add APP_ENV=local to the env section of testbench.yaml, then run vendor/bin/testbench {$label} yourself.");
-        }
-
-        $this->results[] = [$label, $process->isSuccessful() ? 'ran' : 'failed'];
-    }
-
-    private function registerGuideline(): void
-    {
-        $path = $this->root.'/boost.json';
-
-        if (! file_exists($path)) {
-            return;
-        }
-
-        $config = json_decode((string) @file_get_contents($path), true);
-
-        if (! is_array($config)) {
-            $this->results[] = ['boost.json', 'failed (unreadable)'];
-
-            return;
-        }
-
-        $packages = is_array($config['packages'] ?? null) ? $config['packages'] : [];
-
-        if (in_array('bambamboole/extended-testbench', $packages, true)) {
-            return;
-        }
-
-        $packages[] = 'bambamboole/extended-testbench';
-        $config['packages'] = $packages;
-
-        ksort($config);
-
-        if (@file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
-            $this->results[] = ['boost.json', 'failed'];
-
-            return;
-        }
-
-        $this->results[] = ['boost.json', 'registered guideline'];
-        note('Run vendor/bin/testbench boost:update to compose this guideline into CLAUDE.md / AGENTS.md now.');
-    }
-
-    /** @return array<int, string> */
-    private function boostCommand(): array
-    {
-        return file_exists($this->root.'/boost.json')
-            ? ['boost:update', '--discover']
-            : ['boost:install'];
-    }
-
-    private function testDirectory(string $path): void
-    {
-        $dir = $this->root.'/'.$path;
-
-        if (! is_dir($dir) && ! @mkdir($dir, 0755, recursive: true)) {
-            $this->results[] = [$path, 'failed'];
-
-            return;
-        }
-
-        $gitkeep = $path.'/.gitkeep';
-
-        if (file_exists($this->root.'/'.$gitkeep)) {
-            $this->results[] = [$path, 'skipped (exists)'];
-
-            return;
-        }
-
-        if (@file_put_contents($this->root.'/'.$gitkeep, '') === false) {
-            $this->results[] = [$gitkeep, 'failed'];
-
-            return;
-        }
-
-        $this->results[] = [$gitkeep, 'written'];
-    }
-
-    /** @param  array<int, string>  $packages */
-    private function install(array $packages): void
-    {
-        $missing = array_values(array_filter(
-            $packages,
-            fn (string $package): bool => ! $this->composer->hasPackage(explode(':', $package)[0]),
-        ));
-
-        if ($missing === []) {
-            return;
-        }
-
-        if ($this->composer->requirePackages($missing, dev: true, output: $this->output)) {
-            return;
-        }
-
-        foreach ($missing as $package) {
-            $this->results[] = [$package, 'failed'];
-        }
-
-        $this->failedInstalls = [...$this->failedInstalls, ...$missing];
-    }
-
-    /** @param  array<string, string>  $replacements */
-    private function write(string $path, string $stub, array $replacements = [], bool $onlyIfMissing = false): void
-    {
-        $target = $this->root.'/'.$path;
-
-        // A dangling symlink makes file_exists() report false, so onlyIfMissing would not trip and
-        // file_put_contents() would write through the link, creating whatever it pointed at.
-        if (is_link($target) && ! file_exists($target)) {
-            @unlink($target);
-        }
-
-        $existed = file_exists($target);
-
-        if ($existed) {
-            if ($onlyIfMissing) {
-                $this->results[] = [$path, 'skipped (exists)'];
-
-                return;
-            }
-
-            // Only the generated config files reach this branch; anything holding hand-written code
-            // is written with onlyIfMissing above and stays out of --force's reach. Without a real
-            // prompt the answer is no, so a headless run reports the skip instead of asking nobody.
-            $overwrite = $this->option('force') === true
-                || ($this->canPrompt() && confirm("Overwrite {$path}?", default: false));
-
-            if (! $overwrite) {
-                $this->results[] = [$path, 'skipped (exists, --force to replace)'];
-
-                return;
-            }
-        }
-
-        if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0755, recursive: true)) {
-            $this->results[] = [$path, 'failed'];
-
-            return;
-        }
-
-        if (@file_put_contents($target, $this->render($stub, $replacements)) === false) {
-            $this->results[] = [$path, 'failed'];
-
-            return;
-        }
-
-        $this->results[] = [$path, $existed ? 'overwritten' : 'written'];
-    }
-
-    /**
-     * Warns when a legacy config next to a generated `.dist` file shadows it — both PHPUnit and
-     * PHPStan prefer the non-`.dist` name, so the scaffold would be silently ignored. Policy is
-     * warn only: no rename, no prompt. The warning fires regardless of the write outcome, but the
-     * preceding write() already pushed a row for $distPath, so it's only rewritten in place (never
-     * a second row) and only when the write actually succeeded — a failed or skipped write keeps
-     * its true row, so the summary never claims a file was written when it was not.
-     */
-    private function warnIfShadowed(string $distPath): void
-    {
-        $legacy = str_replace('.dist', '', $distPath);
-
-        if (! file_exists($this->root.'/'.$legacy)) {
-            return;
-        }
-
-        warning("{$legacy} already exists and takes precedence over {$distPath}, so the generated file will be ignored. Rename it with `git mv {$legacy} {$distPath}` if you want the scaffold to apply.");
-
-        $last = array_key_last($this->results);
-
-        if ($last === null || $this->results[$last][0] !== $distPath) {
-            return;
-        }
-
-        if (in_array($this->results[$last][1], ['written', 'overwritten'], true)) {
-            $this->results[$last] = [$distPath, "written (shadowed by {$legacy})"];
-        }
-    }
-
-    /** @param  array<string, string>  $replacements */
-    private function render(string $stub, array $replacements): string
-    {
-        $contents = (string) file_get_contents(__DIR__.'/../../stubs/'.$stub);
-
-        foreach ($replacements as $key => $value) {
-            $contents = str_replace('{{ '.$key.' }}', $value, $contents);
-        }
-
-        return $contents;
-    }
-
-    /**
-     * @param  string|array<int, string>  $command
-     */
-    private function script(string $name, string|array $command): void
-    {
-        if (isset($this->composerJson()['scripts'][$name])) {
-            return;
-        }
-
-        $this->composer->modify(static function (array $composer) use ($name, $command): array {
-            $composer['scripts'][$name] = $command;
-
-            return $composer;
-        });
-
-        $this->results[] = ["composer script: {$name}", 'added'];
+        return self::FAILURE;
     }
 
     /** @return array<string, mixed> */
     private function composerJson(): array
     {
         return (array) json_decode((string) file_get_contents($this->root.'/composer.json'), true);
-    }
-
-    /** @return array<int, string> */
-    private function providers(): array
-    {
-        return array_values((array) ($this->composerJson()['extra']['laravel']['providers'] ?? []));
-    }
-
-    private function testNamespace(): string
-    {
-        if ($this->testNamespace !== null) {
-            return $this->testNamespace;
-        }
-
-        foreach ((array) ($this->composerJson()['autoload-dev']['psr-4'] ?? []) as $namespace => $path) {
-            if (rtrim((string) $path, '/') === 'tests') {
-                return $this->testNamespace = (string) $namespace;
-            }
-        }
-
-        $this->composer->modify(static function (array $composer): array {
-            $composer['autoload-dev']['psr-4']['Tests\\'] = 'tests/';
-
-            return $composer;
-        });
-
-        $this->autoloadChanged = true;
-
-        return $this->testNamespace = 'Tests\\';
     }
 }

@@ -1,0 +1,13 @@
+/.github export-ignore
+/.ai export-ignore
+/tests export-ignore
+/workbench export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/artisan export-ignore
+/boost.json export-ignore
+/phpunit.xml.dist export-ignore
+/phpstan.neon.dist export-ignore
+/pint.json export-ignore
+/rector.php export-ignore
+/testbench.yaml export-ignore

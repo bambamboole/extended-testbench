@@ -1,4 +1,7 @@
 laravel: '@testbench'
 
+env:
+  APP_ENV: local
+
 providers:
   - Bambamboole\ExtendedTestbench\ExtendedTestbenchServiceProvider
