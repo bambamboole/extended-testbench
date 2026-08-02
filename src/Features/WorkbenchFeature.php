@@ -10,7 +10,7 @@ final readonly class WorkbenchFeature implements Feature
 {
     public function flag(): Flag
     {
-        return new Flag('workbench', 'Add a workbench app?', false);
+        return new Flag('workbench', 'Add a workbench app?', false, 'Scaffold a workbench app', 'Skip the workbench app');
     }
 
     /** @return iterable<Artifact> */

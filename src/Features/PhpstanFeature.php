@@ -14,7 +14,7 @@ final readonly class PhpstanFeature implements Feature
 
     public function flag(): Flag
     {
-        return new Flag('phpstan', 'Add PHPStan (Larastan)?', true);
+        return new Flag('phpstan', 'Add PHPStan (Larastan)?', true, 'Add PHPStan (Larastan)', 'Skip PHPStan');
     }
 
     /** @return iterable<Artifact> */

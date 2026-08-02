@@ -13,7 +13,7 @@ final readonly class BrowserFeature implements Feature
 {
     public function flag(): Flag
     {
-        return new Flag('browser', 'Add browser tests?', false);
+        return new Flag('browser', 'Add browser tests?', false, 'Add browser tests', 'Skip browser tests');
     }
 
     /** @return iterable<Artifact> */

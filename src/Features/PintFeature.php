@@ -12,7 +12,7 @@ final readonly class PintFeature implements Feature
 {
     public function flag(): Flag
     {
-        return new Flag('pint', 'Add Pint?', true);
+        return new Flag('pint', 'Add Pint?', true, 'Add Pint', 'Skip Pint');
     }
 
     /** @return iterable<Artifact> */

@@ -12,7 +12,7 @@ final readonly class RectorFeature implements Feature
 {
     public function flag(): Flag
     {
-        return new Flag('rector', 'Add Rector?', true);
+        return new Flag('rector', 'Add Rector?', true, 'Add Rector', 'Skip Rector');
     }
 
     /** @return iterable<Artifact> */

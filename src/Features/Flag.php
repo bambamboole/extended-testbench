@@ -10,5 +10,9 @@ final readonly class Flag
         public string $name,
         public string $question,
         public bool $default,
+        /** The `--name` help text InitCommand composes its signature from. */
+        public string $description,
+        /** The `--no-name` help text. */
+        public string $skipDescription,
     ) {}
 }

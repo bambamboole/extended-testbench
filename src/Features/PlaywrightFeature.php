@@ -10,7 +10,7 @@ final readonly class PlaywrightFeature implements Feature
 {
     public function flag(): Flag
     {
-        return new Flag('playwright', 'Install Playwright browsers now?', false);
+        return new Flag('playwright', 'Install Playwright browsers now?', false, 'Install Playwright browsers', 'Skip installing Playwright browsers');
     }
 
     /** @return iterable<Artifact> */
