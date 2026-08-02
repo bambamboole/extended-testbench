@@ -26,6 +26,31 @@ final class InitCommand extends Command
             </testsuite>
     XML;
 
+    private const string WORKBENCH_BLOCK = <<<'YAML'
+
+        workbench:
+          start: '/'
+          welcome: false
+          discovers:
+            web: true
+          build:
+            - create-sqlite-db
+            - migrate:fresh
+        YAML;
+
+    /** @var array<int, string> */
+    private const array GITIGNORE_ENTRIES = [
+        '/vendor/',
+        '/composer.lock',
+        '/.phpunit.cache/',
+        '/CLAUDE.md',
+        '/AGENTS.md',
+        '/.mcp.json',
+        '/.claude/skills/',
+        '/.agents/',
+        '/.junie/',
+    ];
+
     protected $signature = 'package:init';
 
     protected $description = 'Scaffold Pest, static analysis and formatting for this package';
@@ -51,6 +76,8 @@ final class InitCommand extends Command
     {
         intro('extended-testbench: package init');
 
+        $workbench = confirm('Add a workbench app?', default: false);
+
         $browser = confirm('Add browser tests?', default: false);
         $playwright = $browser && confirm('Install Playwright browsers now?', default: false);
 
@@ -61,8 +88,13 @@ final class InitCommand extends Command
         $pint = confirm('Add Pint?', default: true);
 
         $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+        $this->gitignore();
 
-        $this->pest($browser);
+        $this->pest($browser, $workbench);
+
+        if ($workbench) {
+            $this->workbench();
+        }
 
         if ($browser) {
             $this->browser();
@@ -84,6 +116,13 @@ final class InitCommand extends Command
             $this->pint();
         }
 
+        $this->script('check', array_values(array_filter([
+            $pint ? 'pint --test' : null,
+            $phpstan ? 'phpstan analyse' : null,
+            $rector ? 'rector --dry-run' : null,
+            'pest',
+        ])));
+
         if ($this->autoloadChanged) {
             $this->composer->dumpAutoloads();
         }
@@ -101,9 +140,9 @@ final class InitCommand extends Command
         return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
     }
 
-    private function pest(bool $browser): void
+    private function pest(bool $browser, bool $workbench): void
     {
-        $this->install(['pestphp/pest:^5.0']);
+        $this->install(['pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0']);
 
         $this->testDirectory('tests/Unit');
         $this->testDirectory('tests/Feature');
@@ -135,9 +174,36 @@ final class InitCommand extends Command
                 static fn (string $provider): string => '  - '.ltrim($provider, '\\'),
                 $this->providers(),
             ))."\n",
+            'workbench' => $workbench ? self::WORKBENCH_BLOCK : '',
         ], onlyIfMissing: true);
 
         $this->script('test', 'pest');
+    }
+
+    /**
+     * Namespaces, directories and the composer autoload-dev entries a workbench app needs are
+     * Testbench's own job — workbench:devtool writes them, and it resolves package_path() itself.
+     */
+    private function workbench(): void
+    {
+        $binary = $this->root.'/vendor/bin/testbench';
+
+        if (! is_file($binary)) {
+            $this->results[] = ['workbench:devtool', 'skipped (no vendor/bin/testbench)'];
+            note('Run vendor/bin/testbench workbench:devtool to finish the workbench setup.');
+
+            return;
+        }
+
+        $process = new Process(
+            [PHP_BINARY, 'vendor/bin/testbench', 'workbench:devtool', '--no-interaction'],
+            $this->root,
+            timeout: null,
+        );
+
+        $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
+
+        $this->results[] = ['workbench:devtool', $process->isSuccessful() ? 'ran' : 'failed'];
     }
 
     private function browser(): void
@@ -174,7 +240,10 @@ final class InitCommand extends Command
     {
         $this->install(['larastan/larastan:^3.0', 'pestphp/pest-plugin-phpstan:^5.0']);
 
-        $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', ['level' => $level]);
+        $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', [
+            'level' => $level,
+            'workbench_path' => $this->hasWorkbench() ? "\n        - workbench/app" : '',
+        ]);
 
         $this->script('stan', 'phpstan analyse');
     }
@@ -183,9 +252,40 @@ final class InitCommand extends Command
     {
         $this->install(['rector/rector:^2.0']);
 
-        $this->write('rector.php', 'rector.php.stub');
+        $this->write('rector.php', 'rector.php.stub', [
+            'workbench_path' => $this->hasWorkbench() ? ", __DIR__.'/workbench/app'" : '',
+        ]);
 
         $this->script('refactor', 'rector');
+    }
+
+    private function hasWorkbench(): bool
+    {
+        return is_dir($this->root.'/workbench/app');
+    }
+
+    private function gitignore(): void
+    {
+        $path = $this->root.'/.gitignore';
+        $contents = file_exists($path) ? (string) @file_get_contents($path) : '';
+        $present = array_map(trim(...), preg_split('/\R/', $contents) ?: []);
+        $missing = array_values(array_diff(self::GITIGNORE_ENTRIES, $present));
+
+        if ($missing === []) {
+            $this->results[] = ['.gitignore', 'skipped (nothing to add)'];
+
+            return;
+        }
+
+        $prefix = $contents === '' ? '' : rtrim($contents, "\n")."\n";
+
+        if (@file_put_contents($path, $prefix.implode("\n", $missing)."\n") === false) {
+            $this->results[] = ['.gitignore', 'failed'];
+
+            return;
+        }
+
+        $this->results[] = ['.gitignore', $contents === '' ? 'written' : 'updated'];
     }
 
     private function pint(): void
@@ -332,7 +432,10 @@ final class InitCommand extends Command
         return $contents;
     }
 
-    private function script(string $name, string $command): void
+    /**
+     * @param  string|array<int, string>  $command
+     */
+    private function script(string $name, string|array $command): void
     {
         if (isset($this->composerJson()['scripts'][$name])) {
             return;
