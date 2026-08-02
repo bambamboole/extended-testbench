@@ -32,6 +32,21 @@ agent skill directories. Roster scans your real `composer.lock`, so package-spec
 guidelines, `search-docs`, and `application-info` work. An `artisan -> vendor/bin/testbench`
 symlink is created so the generated MCP config (`php artisan boost:mcp`) works verbatim.
 
+## Scaffold a package
+
+```bash
+vendor/bin/testbench package:init
+```
+
+Installs Pest 5 and writes `phpunit.xml.dist` (sqlite `:memory:`), `tests/TestCase.php`,
+`tests/Pest.php` and `testbench.yaml` when they are missing, then asks about browser tests
+(`pest-plugin-browser`, a dummy test, and a `Browser` suite appended to `tests/Pest.php`), PHPStan
+(Larastan + the Pest PHPStan extension, writing `phpstan.neon.dist` plus a `stan` composer script),
+Rector (`rector.php` plus a `refactor` script) and Pint (`pint.json` plus a `lint` script). Existing
+files are never replaced without asking.
+
+Requires PHP 8.4+ and `orchestra/testbench ^9.15|^10.6|^11.0`; Pest 5 needs PHPUnit 13.
+
 ## How it works
 
 Only while a `boost:*` or `mcp:*` command runs under the Testbench CLI, the provider rebases
