@@ -108,7 +108,8 @@ it('batches every missing constraint into a single requirePackages call and yiel
     );
     $artifact = new NeedsPackage('pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0');
 
-    expect(iterator_to_array($artifact->apply($context)))->toBe([]);
+    expect(iterator_to_array($artifact->apply($context)))->toBe([])
+        ->and($context->failedInstalls())->toBe([]);
 });
 
 it('yields a Failed result per missing constraint when the single requirePackages call fails', function () {
@@ -122,4 +123,19 @@ it('yields a Failed result per missing constraint when the single requirePackage
         ->and($results[0]->status)->toBe(Status::Failed)
         ->and($results[1]->label)->toBe('pestphp/pest-plugin-laravel:^5.0')
         ->and($results[1]->status)->toBe(Status::Failed);
+});
+
+/**
+ * InitCommand::$failedInstalls (populated by today's install()) drives the final
+ * `error('Failed to install: ...')` message and the command's non-zero exit code. NeedsPackage is
+ * its replacement producer, so a failed requirePackages() must record the same constraints, in the
+ * same declaration order, onto the Context for Task 11's runner to read back.
+ */
+it('records a failed install onto the Context in declaration order', function () {
+    $context = needsPackageContext(installs: false);
+    $artifact = new NeedsPackage('pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0');
+
+    iterator_to_array($artifact->apply($context));
+
+    expect($context->failedInstalls())->toBe(['pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0']);
 });

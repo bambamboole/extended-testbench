@@ -50,6 +50,8 @@ final readonly class NeedsPackage implements Artifact
             return;
         }
 
+        $context->markInstallFailed(...$missing);
+
         foreach ($missing as $constraint) {
             yield new Result($constraint, Status::Failed);
         }

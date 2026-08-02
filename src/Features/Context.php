@@ -17,6 +17,9 @@ final class Context
 
     private bool $autoloadChanged = false;
 
+    /** @var array<int, string> */
+    private array $failedInstalls = [];
+
     /** @param array<string, bool> $enabled */
     public function __construct(
         private readonly string $root,
@@ -140,5 +143,16 @@ final class Context
     public function autoloadChanged(): bool
     {
         return $this->autoloadChanged;
+    }
+
+    public function markInstallFailed(string ...$constraints): void
+    {
+        $this->failedInstalls = [...$this->failedInstalls, ...$constraints];
+    }
+
+    /** @return array<int, string> */
+    public function failedInstalls(): array
+    {
+        return $this->failedInstalls;
     }
 }
