@@ -782,3 +782,28 @@ it('does not bake an app key into the generated phpunit config', function () {
 
     expect(file_get_contents($this->root.'/phpunit.xml.dist'))->not->toContain('APP_KEY');
 });
+
+it('warns when a legacy phpunit.xml will shadow the generated dist config', function () {
+    file_put_contents($this->root.'/phpunit.xml', '<phpunit/>');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('phpunit.xml')
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>')
+        ->and($this->root.'/phpunit.xml.dist')->toBeFile();
+});
+
+it('warns when artisan is still a symlink instead of the shim', function () {
+    symlink('vendor/bin/testbench', $this->root.'/artisan');
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->expectsOutputToContain('symlink')
+        ->assertSuccessful();
+
+    expect(is_link($this->root.'/artisan'))->toBeTrue();
+});

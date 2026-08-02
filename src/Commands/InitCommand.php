@@ -109,6 +109,11 @@ final class InitCommand extends Command
         $pint = $this->resolve('pint', 'Add Pint?', true);
 
         $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+
+        if (is_link($this->root.'/artisan')) {
+            warning('artisan is a symlink, not the shim this package now writes. Both work; replace it with `rm artisan` followed by a rerun if you want the committed shim.');
+        }
+
         $this->gitignore();
 
         $this->pest($browser, $workbench);
@@ -217,6 +222,8 @@ final class InitCommand extends Command
             'browser_testsuite' => $browser ? self::BROWSER_TESTSUITE : '',
         ]);
 
+        $this->warnIfShadowed('phpunit.xml.dist');
+
         if ($browser && ! str_contains((string) @file_get_contents($this->root.'/phpunit.xml.dist'), 'name="Browser"')) {
             warning('phpunit.xml.dist does not include the Browser testsuite — add it by hand.');
         }
@@ -313,6 +320,8 @@ final class InitCommand extends Command
             'level' => $level,
             'workbench_path' => $this->hasWorkbench() ? "\n        - workbench/app" : '',
         ]);
+
+        $this->warnIfShadowed('phpstan.neon.dist');
 
         $this->script('stan', 'phpstan analyse');
     }
@@ -523,6 +532,31 @@ final class InitCommand extends Command
         }
 
         $this->results[] = [$path, $existed ? 'overwritten' : 'written'];
+    }
+
+    /**
+     * Warns when a legacy config next to a generated `.dist` file shadows it — both PHPUnit and
+     * PHPStan prefer the non-`.dist` name, so the scaffold would be silently ignored. Policy is
+     * warn only: no rename, no prompt. The preceding write() already pushed a row for $distPath;
+     * replace it rather than add a second one so the summary keeps exactly one row per path.
+     */
+    private function warnIfShadowed(string $distPath): void
+    {
+        $legacy = str_replace('.dist', '', $distPath);
+
+        if (! file_exists($this->root.'/'.$legacy)) {
+            return;
+        }
+
+        warning("{$legacy} already exists and takes precedence over {$distPath}, so the generated file will be ignored. Rename it with `git mv {$legacy} {$distPath}` if you want the scaffold to apply.");
+
+        $last = array_key_last($this->results);
+
+        if ($last !== null && $this->results[$last][0] === $distPath) {
+            unset($this->results[$last]);
+        }
+
+        $this->results[] = [$distPath, "written (shadowed by {$legacy})"];
     }
 
     /** @param  array<string, string>  $replacements */
