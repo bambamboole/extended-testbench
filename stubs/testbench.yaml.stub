@@ -1,2 +1,2 @@
 laravel: '@testbench'
-{{ providers }}
+{{ providers }}{{ workbench }}
