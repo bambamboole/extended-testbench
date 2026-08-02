@@ -9,3 +9,7 @@ composer.lock
 .idea/
 /docs/superpowers/
 .superpowers/
+/AGENTS.md
+/.mcp.json
+/.claude/skills/
+/.junie/
