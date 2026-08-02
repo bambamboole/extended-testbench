@@ -539,7 +539,10 @@ it('scaffolds rector and pint when accepted', function () {
         ->toContain("__DIR__.'/src'");
 
     expect(json_decode(file_get_contents($this->root.'/pint.json'), true))
-        ->toBe(['preset' => 'laravel', 'rules' => ['declare_strict_types' => true]]);
+        ->toBe(['preset' => 'laravel', 'rules' => [
+            'declare_strict_types' => true,
+            'blank_line_after_opening_tag' => false,
+        ]]);
 
     $composerJson = json_decode(file_get_contents($this->root.'/composer.json'), true);
 
