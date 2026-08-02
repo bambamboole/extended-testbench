@@ -109,6 +109,7 @@ final class InitCommand extends Command
         $pint = $this->resolve('pint', 'Add Pint?', true);
 
         $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
+        $this->write('.gitattributes', 'gitattributes.stub', onlyIfMissing: true);
 
         if (is_link($this->root.'/artisan')) {
             warning('artisan is a symlink, not the shim this package now writes. Both work; replace it with `rm artisan` followed by a rerun if you want the committed shim.');
@@ -319,6 +320,7 @@ final class InitCommand extends Command
         $this->write('phpstan.neon.dist', 'phpstan.neon.dist.stub', [
             'level' => $level,
             'workbench_path' => $this->hasWorkbench() ? "\n        - workbench/app" : '',
+            'database_path' => $this->hasDatabase() ? "\n        - database" : '',
         ]);
 
         $this->warnIfShadowed('phpstan.neon.dist');
@@ -340,6 +342,11 @@ final class InitCommand extends Command
     private function hasWorkbench(): bool
     {
         return is_dir($this->root.'/workbench/app');
+    }
+
+    private function hasDatabase(): bool
+    {
+        return is_dir($this->root.'/database');
     }
 
     private function gitignore(): void
@@ -423,7 +430,7 @@ final class InitCommand extends Command
             return;
         }
 
-        $packages = $config['packages'] ?? [];
+        $packages = is_array($config['packages'] ?? null) ? $config['packages'] : [];
 
         if (in_array('bambamboole/extended-testbench', $packages, true)) {
             return;

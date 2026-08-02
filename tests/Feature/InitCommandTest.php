@@ -129,6 +129,18 @@ it('leaves an existing artisan entrypoint alone', function () {
     expect(file_get_contents($this->root.'/artisan'))->toBe("<?php // custom entrypoint\n");
 });
 
+it('writes a gitattributes that keeps development files out of the dist archive', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/.gitattributes'))
+        ->toContain('/tests export-ignore')
+        ->toContain('/workbench export-ignore')
+        ->toContain('/.ai export-ignore');
+});
+
 it('creates the Unit and Feature test directories with a .gitkeep so PHPUnit does not fail to boot', function () {
     bindInit($this->root);
 
@@ -162,6 +174,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitattributes', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
@@ -197,6 +210,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitattributes', 'written'],
             ['.gitignore', 'written'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
@@ -287,6 +301,7 @@ it('reports failure and records it in the summary when a composer install fails'
         ->expectsConfirmation('Add Pint?', 'no')
         ->expectsPromptsTable(['File', 'Result'], [
             ['artisan', 'written'],
+            ['.gitattributes', 'written'],
             ['.gitignore', 'written'],
             ['pestphp/pest:^5.0', 'failed'],
             ['pestphp/pest-plugin-laravel:^5.0', 'failed'],
@@ -443,6 +458,16 @@ it('scaffolds rector and pint when accepted', function () {
         ->and($composerJson['scripts']['lint'])->toBe('pint --format agent');
 });
 
+it('skips the rector rule that strips reflection-resolved laravel parameters', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/rector.php'))
+        ->toContain('RemoveUnusedPublicMethodParameterRector');
+});
+
 it('writes the gitignore entries that init and boost cause to exist', function () {
     bindInit($this->root);
 
@@ -575,6 +600,26 @@ it('leaves workbench/app out of the analysed paths when the package has none', f
 
     expect(file_get_contents($this->root.'/phpstan.neon.dist'))->not->toContain('workbench')
         ->and(file_get_contents($this->root.'/rector.php'))->not->toContain('workbench');
+});
+
+it('analyses the database directory when the package has one', function () {
+    mkdir($this->root.'/database/factories', 0755, true);
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('- database');
+});
+
+it('leaves the database directory out when the package has none', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->not->toContain('database');
 });
 
 it('selects boost:install when the package has no boost.json', function () {
@@ -772,6 +817,22 @@ it('does not duplicate itself in an existing packages key', function () {
     $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
 
     expect($boost['packages'])->toBe(['bambamboole/extended-testbench', 'acme/other']);
+});
+
+it('treats a malformed packages key as empty instead of throwing', function () {
+    file_put_contents($this->root.'/boost.json', json_encode([
+        'guidelines' => true,
+        'packages' => 'foo',
+    ], JSON_PRETTY_PRINT));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    $boost = json_decode((string) file_get_contents($this->root.'/boost.json'), true);
+
+    expect($boost['packages'])->toBe(['bambamboole/extended-testbench']);
 });
 
 it('does not bake an app key into the generated phpunit config', function () {
