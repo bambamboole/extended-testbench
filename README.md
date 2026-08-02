@@ -82,8 +82,9 @@ once browser tests are accepted) and a `test:browser` script for that suite, pre
 tools you accepted, ending in `@test`, for CI and git hooks. It also wires the Testbench
 `post-autoload-dump` hooks (`package:purge-skeleton`, `package:discover`) and a `boost:refresh`
 script into `post-install-cmd` / `post-update-cmd`; `boost:refresh` reruns
-`boost:update --no-interaction` on every local install or update, but no-ops in CI or before
-`vendor/bin/testbench` exists.
+`boost:update --no-interaction` on every local install or update, but no-ops in CI, before
+`vendor/bin/testbench` exists, or before Boost has been set up (`boost.json` present), and never
+fails the surrounding `composer install`/`update` even if that rerun does.
 
 Existing files are never replaced without asking; a legacy `phpunit.xml` or `phpstan.neon` that would
 shadow the generated `.dist` file, or an `artisan` that's still a symlink rather than the committed

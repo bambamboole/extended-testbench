@@ -378,6 +378,32 @@ it('appends the browser suite to an existing Pest.php', function () {
     expect(substr_count($pest, "in('Browser')"))->toBe(1);
 });
 
+it('warns instead of silently keeping a 0.2.0-era Browser mapping to the base TestCase', function () {
+    mkdir($this->root.'/tests', 0755, true);
+    file_put_contents(
+        $this->root.'/tests/Pest.php',
+        "<?php\n\ndeclare(strict_types=1);\n\nuses(\\Tests\\TestCase::class)->in('Feature', 'Unit', 'Browser');\n",
+    );
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--browser' => true,
+        '--no-playwright' => true,
+        '--defaults' => true,
+    ])
+        ->expectsOutputToContain("tests/Pest.php already maps 'Browser' to the base TestCase")
+        ->assertSuccessful();
+
+    expect($this->root.'/tests/BrowserTestCase.php')->toBeFile();
+
+    $pest = (string) file_get_contents($this->root.'/tests/Pest.php');
+
+    expect($pest)->toBe("<?php\n\ndeclare(strict_types=1);\n\nuses(\\Tests\\TestCase::class)->in('Feature', 'Unit', 'Browser');\n")
+        ->and($pest)->not->toContain('BrowserTestCase');
+});
+
 it('does not scaffold browser tests when declined', function () {
     bindInit($this->root);
 
@@ -705,6 +731,19 @@ it('runs headless with --defaults', function () {
         ->and($this->root.'/tests/Browser')->not->toBeDirectory();
 });
 
+it('does not prompt at all when --defaults is passed without --no-interaction', function () {
+    // No expectsConfirmation()/expectsChoice() is scripted below on purpose: if resolve() or
+    // phpstanLevel() asked anything, Laravel's PendingCommand would fail on the unexpected
+    // prompt. Passing --defaults alone reaching assertSuccessful() is the proof.
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--defaults' => true])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpunit.xml.dist')->toBeFile()
+        ->and($this->root.'/phpstan.neon.dist')->toBeFile();
+});
+
 it('takes section flags over the defaults when headless', function () {
     bindInit($this->root);
 
@@ -802,8 +841,9 @@ it('scaffolds the testbench autoload hooks and a guarded boost refresh', functio
     ])
         ->and($scripts['post-install-cmd'])->toBe(['@boost:refresh'])
         ->and($scripts['post-update-cmd'])->toBe(['@boost:refresh'])
-        ->and($scripts['boost:refresh'])->toContain('[ -n "$CI" ]')
-        ->and($scripts['boost:refresh'])->toContain('boost:update --no-interaction');
+        ->and($scripts['boost:refresh'])->toBe(
+            '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true',
+        );
 });
 
 it('treats gitignore entries as equivalent regardless of a leading slash', function () {

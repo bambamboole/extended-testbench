@@ -155,7 +155,7 @@ final class InitCommand extends Command
             '@php vendor/bin/testbench package:discover --ansi',
         ]);
 
-        $this->script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || vendor/bin/testbench boost:update --no-interaction');
+        $this->script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true');
         $this->script('post-install-cmd', ['@boost:refresh']);
         $this->script('post-update-cmd', ['@boost:refresh']);
 
@@ -187,6 +187,10 @@ final class InitCommand extends Command
             return false;
         }
 
+        if ($this->option('defaults') === true) {
+            return $default;
+        }
+
         return $this->canPrompt()
             ? confirm($question, default: $default)
             : $default;
@@ -205,6 +209,10 @@ final class InitCommand extends Command
 
         if ($this->input->hasParameterOption('--phpstan-level')) {
             return (string) $this->option('phpstan-level');
+        }
+
+        if ($this->option('defaults') === true) {
+            return '6';
         }
 
         return $this->canPrompt()
@@ -312,7 +320,17 @@ final class InitCommand extends Command
 
         $pest = $this->root.'/tests/Pest.php';
 
-        if (! file_exists($pest) || str_contains((string) file_get_contents($pest), "'Browser'")) {
+        if (! file_exists($pest)) {
+            return;
+        }
+
+        $contents = (string) file_get_contents($pest);
+
+        if (str_contains($contents, "'Browser'")) {
+            if (! str_contains($contents, 'BrowserTestCase')) {
+                warning("tests/Pest.php already maps 'Browser' to the base TestCase. Change that line to uses(\\{$this->testNamespace()}BrowserTestCase::class)->in('Browser'); so the Vite guard runs.");
+            }
+
             return;
         }
 
@@ -540,7 +558,11 @@ final class InitCommand extends Command
                 return;
             }
 
-            if (! confirm("Overwrite {$path}?", default: false)) {
+            $overwrite = $this->option('defaults') === true
+                ? false
+                : confirm("Overwrite {$path}?", default: false);
+
+            if (! $overwrite) {
                 $this->results[] = [$path, 'skipped'];
 
                 return;
