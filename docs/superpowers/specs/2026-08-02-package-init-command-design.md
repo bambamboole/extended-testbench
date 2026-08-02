@@ -228,12 +228,19 @@ same name:
 
 One feature test, `tests/Feature/InitCommandTest.php`:
 
-- `Prompt::fake([...])` scripts the answers.
-- The command is constructed directly with a temporary root and a mocked `Composer`, then run
-  through Symfony's `CommandTester`.
-- **Not** `$this->artisan('package:init')` — the registered singleton resolves `package_path()`,
-  which during this package's own suite is this repository, so an artisan-driven test could
-  overwrite real files.
+- Answers are scripted with `$this->artisan('package:init')->expectsConfirmation(...)` /
+  `->expectsChoice(...)`. `Laravel\Prompts\Prompt::fake()` does **not** work here: `Command::run()`
+  calls `configurePrompts()`, which sets `Prompt::fallbackWhen(windows_os() || runningUnitTests())`,
+  so under any Testbench suite every prompt takes the Symfony fallback and returns its default,
+  ignoring faked key presses. Laravel's `expects*()` helpers drive that same fallback.
+- Each test first binds a temp-rooted command instance —
+  `app()->instance(InitCommand::class, new InitCommand($composerDouble, $tempRoot))`. This is
+  mandatory: the provider's binding roots the command at `package_path()`, which during this
+  package's own suite is this repository, so resolving it would write real files and run a real
+  `composer require`.
+- The `Composer` double is a Mockery partial (`[requirePackages,dumpAutoloads]`) constructed with
+  the temp root, so `hasPackage()` and `modify()` really run against the temp `composer.json` while
+  the two shelling-out methods are stubbed.
 - Assertions: the expected files exist under the temp root with the expected key contents
   (`:memory:` in the phpunit config, the `Browser` line in `Pest.php`, the accepted-only files
   absent when declined), and existing files are left untouched when the overwrite prompt is

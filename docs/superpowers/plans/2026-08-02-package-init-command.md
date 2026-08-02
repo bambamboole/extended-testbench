@@ -208,9 +208,6 @@ declare(strict_types=1);
 use Bambamboole\ExtendedTestbench\Commands\InitCommand;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Composer;
-use Symfony\Component\Console\Tester\CommandTester;
-
-use function Laravel\Prompts\Key;
 
 beforeEach(function () {
     $this->root = sys_get_temp_dir().'/etb-init-'.bin2hex(random_bytes(4));
@@ -228,22 +225,22 @@ afterEach(function () {
 });
 
 /**
- * Runs package:init against the temp package with the given key presses.
- * The Composer double keeps the real hasPackage()/modify() (they only touch
- * the temp composer.json) and stubs out the two methods that shell out.
+ * Binds a temp-rooted InitCommand instance so `$this->artisan('package:init')`
+ * runs against the temp package instead of this repository. The Composer double
+ * keeps the real hasPackage()/modify() (they only touch the temp composer.json)
+ * and stubs out the two methods that shell out.
+ *
+ * MANDATORY: every test that runs the command calls this first. The provider's
+ * own binding roots the command at package_path() — this repository — so
+ * resolving it would write real files and run a real `composer require`.
  */
-function runInit(string $root, array $keys): void
+function bindInit(string $root): void
 {
-    Laravel\Prompts\Prompt::fake($keys);
-
     $composer = Mockery::mock(Composer::class.'[requirePackages,dumpAutoloads]', [new Filesystem, $root]);
     $composer->shouldReceive('requirePackages')->andReturnTrue();
     $composer->shouldReceive('dumpAutoloads')->andReturnTrue();
 
-    $command = new InitCommand($composer, $root);
-    $command->setLaravel(app());
-
-    (new CommandTester($command))->execute([]);
+    app()->instance(InitCommand::class, new InitCommand($composer, $root));
 }
 
 it('registers the package:init command', function () {
@@ -259,8 +256,11 @@ it('builds the command with the package root and a composer instance', function 
 });
 
 it('scaffolds the pest baseline when everything else is declined', function () {
-    // browser: n, phpstan: n, rector: n, pint: n
-    runInit($this->root, ['n', 'n', 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->assertSuccessful();
 
     expect($this->root.'/phpunit.xml.dist')->toBeFile()
         ->and($this->root.'/tests/TestCase.php')->toBeFile()
@@ -297,8 +297,12 @@ it('keeps existing files when the overwrite prompt is declined', function () {
     mkdir($this->root.'/tests', 0755, true);
     file_put_contents($this->root.'/tests/Pest.php', '<?php // ORIGINAL PEST');
 
-    // browser: n, phpstan: n, rector: n, pint: n, overwrite phpunit.xml.dist: n
-    runInit($this->root, ['n', 'n', 'n', 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'no')
+        ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpunit.xml.dist'))->toBe('ORIGINAL')
         ->and(file_get_contents($this->root.'/tests/Pest.php'))->toBe('<?php // ORIGINAL PEST');
@@ -307,14 +311,32 @@ it('keeps existing files when the overwrite prompt is declined', function () {
 it('overwrites an existing file when the prompt is accepted', function () {
     file_put_contents($this->root.'/phpunit.xml.dist', 'ORIGINAL');
 
-    // browser: n, phpstan: n, rector: n, pint: n, overwrite phpunit.xml.dist: y
-    runInit($this->root, ['n', 'n', 'n', 'n', 'y']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'yes')
+        ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpunit.xml.dist'))->toContain(':memory:');
 });
 ```
 
-Delete the unused `use function Laravel\Prompts\Key;` line if your editor added it — `Key` is only needed from Task 4 onwards.
+**Why `$this->artisan()` and not `Prompt::fake()` + `CommandTester`:** `Illuminate\Console\Command::run()`
+calls `configurePrompts()`, which does `Prompt::fallbackWhen(windows_os() || $this->laravel->runningUnitTests())`.
+Under any Testbench suite that is unconditionally `true`, so `confirm()` never reads the faked terminal — it
+takes the Symfony fallback and returns its default, silently ignoring every queued key press. Laravel's
+`expectsConfirmation()` / `expectsChoice()` drive that same fallback, which is why they work.
+
+**Why the instance binding is mandatory:** the provider binds `InitCommand` rooted at `package_path()`, which
+during this repo's own suite is **this repository**. Resolving that binding in a test would write real files
+and shell out to a real `composer require`. `app()->instance(...)` with a temp-rooted command makes that
+impossible; never call `$this->artisan('package:init')` without `bindInit()` first.
+
+**Prompt expectations track the prompts that exist:** unlike a faked key queue, `expectsConfirmation()` fails
+on a question that is never asked. Task 2's `handle()` asks exactly one section prompt, so these tests expect
+only `Add browser tests?` plus the overwrite confirmations. Tasks 3-5 add their new prompts to these same
+tests as they introduce them.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -606,7 +628,7 @@ final class InitCommand extends Command
 Run: `vendor/bin/pest tests/Feature/InitCommandTest.php`
 Expected: PASS — 5 tests.
 
-If `Prompt::fake()` complains about a missing key press, the prompt count in the test does not match `handle()`; count the `confirm()` calls in order and fix the key array, not the command.
+If a test fails with "Expected question was not asked", the expectations do not match the prompts `handle()` actually asks, in order. Count the `confirm()` calls and fix the expectations, not the command.
 
 - [ ] **Step 6: Run the whole suite**
 
@@ -640,8 +662,12 @@ Append to `tests/Feature/InitCommandTest.php`:
 
 ```php
 it('scaffolds browser tests when accepted', function () {
-    // browser: y, playwright: n, phpstan: n, rector: n, pint: n
-    runInit($this->root, ['y', 'n', 'n', 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'yes')
+        ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->assertSuccessful();
 
     expect($this->root.'/tests/Browser/DummyTest.php')->toBeFile();
 
@@ -663,8 +689,12 @@ it('appends the browser suite to an existing Pest.php', function () {
         "<?php\n\ndeclare(strict_types=1);\n\nuses(Tests\\TestCase::class)->in('Feature');\n",
     );
 
-    // browser: y, playwright: n, phpstan: n, rector: n, pint: n
-    runInit($this->root, ['y', 'n', 'n', 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'yes')
+        ->expectsConfirmation('Install Playwright browsers now?', 'no')
+        ->assertSuccessful();
 
     $pest = file_get_contents($this->root.'/tests/Pest.php');
 
@@ -675,8 +705,11 @@ it('appends the browser suite to an existing Pest.php', function () {
 });
 
 it('does not scaffold browser tests when declined', function () {
-    // browser: n, phpstan: n, rector: n, pint: n
-    runInit($this->root, ['n', 'n', 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->assertSuccessful();
 
     expect($this->root.'/tests/Browser')->not->toBeDirectory();
 });
@@ -790,12 +823,22 @@ The accepted-Playwright branch shells out to `npx` and is deliberately left unte
 
 - [ ] **Step 1: Write the failing tests**
 
-Add the import `use Laravel\Prompts\Key;` at the top of `tests/Feature/InitCommandTest.php` and append:
+First, because `handle()` gains a prompt, add `->expectsConfirmation('Add PHPStan (Larastan)?', 'no')` to
+**every existing test** in `tests/Feature/InitCommandTest.php` that runs the command, placed after the browser
+and Playwright expectations and before `->assertSuccessful()`. Unasked-for expectations and unexpected
+questions both fail, so the list must mirror `handle()` exactly.
+
+Then append:
 
 ```php
 it('scaffolds phpstan when accepted', function () {
-    // browser: n, phpstan: y, level: <enter> (default 6), rector: n, pint: n
-    runInit($this->root, ['n', 'y', Key::ENTER, 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '6', ['5', '6', '7', '8', '9', 'max'])
+        ->assertSuccessful();
 
     expect($this->root.'/phpstan.neon.dist')->toBeFile();
 
@@ -811,8 +854,13 @@ it('scaffolds phpstan when accepted', function () {
 });
 
 it('writes the selected phpstan level', function () {
-    // browser: n, phpstan: y, level: down x2 -> 8, rector: n, pint: n
-    runInit($this->root, ['n', 'y', Key::DOWN, Key::DOWN, Key::ENTER, 'n', 'n']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'yes')
+        ->expectsChoice('PHPStan level', '8', ['5', '6', '7', '8', '9', 'max'])
+        ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
 });
@@ -877,7 +925,9 @@ Add the method:
 Run: `vendor/bin/pest tests/Feature/InitCommandTest.php`
 Expected: PASS — 10 tests.
 
-If the level-selection test picks the wrong level, check how many `Key::DOWN` presses the default position needs: the default `'6'` is index 1, so two DOWNs land on `'8'` (index 3).
+If `expectsChoice()` fails on the choices array (Laravel compares it against what the fallback passes to
+`components->choice()`), drop the third argument or use `->expectsQuestion('PHPStan level', '6')` instead —
+the assertion that matters is the level that lands in `phpstan.neon.dist`.
 
 - [ ] **Step 6: Format and commit**
 
@@ -902,12 +952,23 @@ git commit -m "feat: add phpstan scaffolding to package:init"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/Feature/InitCommandTest.php`:
+First, `handle()` gains two prompts, so add `->expectsConfirmation('Add Rector?', 'no')` and
+`->expectsConfirmation('Add Pint?', 'no')` — in that order, as the last expectations before
+`->assertSuccessful()` — to **every existing test** in `tests/Feature/InitCommandTest.php` that runs the
+command.
+
+Then append:
 
 ```php
 it('scaffolds rector and pint when accepted', function () {
-    // browser: n, phpstan: n, rector: y, pint: y
-    runInit($this->root, ['n', 'n', 'y', 'y']);
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'yes')
+        ->expectsConfirmation('Add Pint?', 'yes')
+        ->assertSuccessful();
 
     expect($this->root.'/rector.php')->toBeFile()
         ->and($this->root.'/pint.json')->toBeFile();
@@ -1046,37 +1107,22 @@ replaced without asking.
 Requires PHP 8.4+ and `orchestra/testbench ^10.10|^11`; Pest 5 needs PHPUnit 13.
 ```
 
-- [ ] **Step 2: Verify the real command end to end**
+- [ ] **Step 2: Sanity-check the stubs the tests cannot lint**
+
+The feature tests assert file *contents*, not that the generated PHP parses. Check the two stubs that
+are complete PHP files and the JSON one:
 
 ```bash
-mkdir -p /tmp/etb-smoke && cd /tmp/etb-smoke
-printf '{\n    "name": "acme/smoke"\n}\n' > composer.json
+php -l stubs/rector.php.stub
+php -l stubs/BrowserDummyTest.php.stub
+php -r 'json_decode(file_get_contents("stubs/pint.json.stub"), true, 512, JSON_THROW_ON_ERROR); echo "pint.json.stub ok\n";'
 ```
 
-Then, from the package repo, run the command against that directory by hand — the fastest way is a
-one-off PHP snippet, because `package:init` resolves its root from `package_path()`:
+Expected: `No syntax errors detected` twice, then `pint.json.stub ok`.
 
-```bash
-cd /Users/manuel.christlieb/Projects/extended-testbench
-php -r '
-require "vendor/autoload.php";
-$app = new Illuminate\Foundation\Application("/tmp/etb-smoke");
-$c = new Illuminate\Support\Composer(new Illuminate\Filesystem\Filesystem, "/tmp/etb-smoke");
-$cmd = new Bambamboole\ExtendedTestbench\Commands\InitCommand($c, "/tmp/etb-smoke");
-$cmd->setLaravel($app);
-(new Symfony\Component\Console\Application)->add($cmd);
-exit((new Symfony\Component\Console\Application)->find("package:init")->run(
-    new Symfony\Component\Console\Input\ArrayInput([]),
-    new Symfony\Component\Console\Output\ConsoleOutput
-));
-'
-```
-
-If that harness proves awkward, skip it — the feature tests already cover every branch except the
-`npx playwright install` shell-out. Do **not** run the real command against this repository: it
-would rewrite `phpunit.xml.dist` and `pint.json`.
-
-Clean up afterwards: `rm -rf /tmp/etb-smoke`.
+Do **not** run the real `vendor/bin/testbench package:init` against this repository — its root is this
+repo, so it would rewrite `phpunit.xml.dist` / `pint.json` and shell out to a real `composer require`.
+The `npx playwright install` branch stays unverified by design.
 
 - [ ] **Step 3: Full verification**
 
