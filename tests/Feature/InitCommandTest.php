@@ -593,3 +593,57 @@ it('selects boost:update --discover when the package already has boost.json', fu
         ->expectsOutputToContain('boost:update --discover')
         ->assertSuccessful();
 });
+
+it('refuses to run headless without flags', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true])->assertFailed();
+
+    expect($this->root.'/phpunit.xml.dist')->not->toBeFile()
+        ->and($this->root.'/artisan')->not->toBeFile();
+});
+
+it('runs headless with --defaults', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpunit.xml.dist')->toBeFile()
+        ->and($this->root.'/phpstan.neon.dist')->toBeFile()
+        ->and($this->root.'/rector.php')->toBeFile()
+        ->and($this->root.'/pint.json')->toBeFile()
+        ->and($this->root.'/tests/Browser')->not->toBeDirectory();
+});
+
+it('takes section flags over the defaults when headless', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--workbench' => true,
+        '--no-phpstan' => true,
+        '--no-rector' => true,
+        '--no-pint' => true,
+        '--phpstan-level' => '8',
+    ])->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/testbench.yaml'))->toContain('workbench:')
+        ->and($this->root.'/phpstan.neon.dist')->not->toBeFile()
+        ->and($this->root.'/rector.php')->not->toBeFile()
+        ->and($this->root.'/pint.json')->not->toBeFile();
+});
+
+it('writes the phpstan level given on the command line', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', [
+        '--no-interaction' => true,
+        '--phpstan' => true,
+        '--phpstan-level' => '8',
+        '--no-rector' => true,
+        '--no-pint' => true,
+    ])->assertSuccessful();
+
+    expect(file_get_contents($this->root.'/phpstan.neon.dist'))->toContain('level: 8');
+});

@@ -51,7 +51,21 @@ final class InitCommand extends Command
         '/.junie/',
     ];
 
-    protected $signature = 'package:init';
+    protected $signature = 'package:init
+        {--defaults : Accept every default without prompting}
+        {--workbench : Scaffold a workbench app}
+        {--no-workbench : Skip the workbench app}
+        {--browser : Add browser tests}
+        {--no-browser : Skip browser tests}
+        {--playwright : Install Playwright browsers}
+        {--no-playwright : Skip installing Playwright browsers}
+        {--phpstan : Add PHPStan (Larastan)}
+        {--no-phpstan : Skip PHPStan}
+        {--phpstan-level=6 : The PHPStan level to write}
+        {--rector : Add Rector}
+        {--no-rector : Skip Rector}
+        {--pint : Add Pint}
+        {--no-pint : Skip Pint}';
 
     protected $description = 'Scaffold Pest, static analysis and formatting for this package';
 
@@ -74,18 +88,25 @@ final class InitCommand extends Command
 
     public function handle(): int
     {
+        if (! $this->input->isInteractive() && ! $this->option('defaults') && ! $this->hasSectionFlag()) {
+            error('package:init needs an interactive terminal, --defaults, or explicit section flags.');
+            note('Flags: --workbench --browser --playwright --phpstan --phpstan-level=6 --rector --pint, and --no-* for each.');
+
+            return self::FAILURE;
+        }
+
         intro('extended-testbench: package init');
 
-        $workbench = confirm('Add a workbench app?', default: false);
+        $workbench = $this->resolve('workbench', 'Add a workbench app?', false);
 
-        $browser = confirm('Add browser tests?', default: false);
-        $playwright = $browser && confirm('Install Playwright browsers now?', default: false);
+        $browser = $this->resolve('browser', 'Add browser tests?', false);
+        $playwright = $browser && $this->resolve('playwright', 'Install Playwright browsers now?', false);
 
-        $phpstan = confirm('Add PHPStan (Larastan)?', default: true);
-        $level = $phpstan ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6') : '6';
+        $phpstan = $this->resolve('phpstan', 'Add PHPStan (Larastan)?', true);
+        $level = $this->phpstanLevel($phpstan);
 
-        $rector = confirm('Add Rector?', default: true);
-        $pint = confirm('Add Pint?', default: true);
+        $rector = $this->resolve('rector', 'Add Rector?', true);
+        $pint = $this->resolve('pint', 'Add Pint?', true);
 
         $this->write('artisan', 'artisan.stub', onlyIfMissing: true);
         $this->gitignore();
@@ -138,6 +159,41 @@ final class InitCommand extends Command
         outro('Done.');
 
         return $this->failedInstalls === [] ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function resolve(string $name, string $question, bool $default): bool
+    {
+        if ($this->option($name) === true) {
+            return true;
+        }
+
+        if ($this->option('no-'.$name) === true) {
+            return false;
+        }
+
+        return $this->input->isInteractive()
+            ? confirm($question, default: $default)
+            : $default;
+    }
+
+    private function hasSectionFlag(): bool
+    {
+        return array_any(['workbench', 'browser', 'playwright', 'phpstan', 'rector', 'pint'], fn (string $section): bool => $this->option($section) === true || $this->option('no-'.$section) === true);
+    }
+
+    private function phpstanLevel(bool $phpstan): string
+    {
+        if (! $phpstan) {
+            return '6';
+        }
+
+        if ($this->input->hasParameterOption('--phpstan-level')) {
+            return (string) $this->option('phpstan-level');
+        }
+
+        return $this->input->isInteractive()
+            ? select('PHPStan level', ['5', '6', '7', '8', '9', 'max'], default: '6')
+            : '6';
     }
 
     private function pest(bool $browser, bool $workbench): void
@@ -309,16 +365,14 @@ final class InitCommand extends Command
             return;
         }
 
-        if (! Process::isTtySupported()) {
-            $this->results[] = [$label, 'skipped (no tty)'];
-            note("Run vendor/bin/testbench {$label} to compose the guidelines.");
-
-            return;
+        if (Process::isTtySupported()) {
+            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command], $this->root, timeout: null);
+            $process->setTty(true);
+            $process->run();
+        } else {
+            $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command, '--no-interaction'], $this->root, timeout: null);
+            $process->run(fn (string $type, string $buffer) => $this->output->write($buffer));
         }
-
-        $process = new Process([PHP_BINARY, 'vendor/bin/testbench', ...$command], $this->root, timeout: null);
-        $process->setTty(true);
-        $process->run();
 
         if (! $process->isSuccessful()) {
             note("Boost's commands are only registered in a local environment. Add APP_ENV=local to the env section of testbench.yaml, then run vendor/bin/testbench {$label} yourself.");
