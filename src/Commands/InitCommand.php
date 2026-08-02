@@ -544,8 +544,10 @@ final class InitCommand extends Command
     /**
      * Warns when a legacy config next to a generated `.dist` file shadows it — both PHPUnit and
      * PHPStan prefer the non-`.dist` name, so the scaffold would be silently ignored. Policy is
-     * warn only: no rename, no prompt. The preceding write() already pushed a row for $distPath;
-     * replace it rather than add a second one so the summary keeps exactly one row per path.
+     * warn only: no rename, no prompt. The warning fires regardless of the write outcome, but the
+     * preceding write() already pushed a row for $distPath, so it's only rewritten in place (never
+     * a second row) and only when the write actually succeeded — a failed or skipped write keeps
+     * its true row, so the summary never claims a file was written when it was not.
      */
     private function warnIfShadowed(string $distPath): void
     {
@@ -559,11 +561,13 @@ final class InitCommand extends Command
 
         $last = array_key_last($this->results);
 
-        if ($last !== null && $this->results[$last][0] === $distPath) {
-            unset($this->results[$last]);
+        if ($last === null || $this->results[$last][0] !== $distPath) {
+            return;
         }
 
-        $this->results[] = [$distPath, "written (shadowed by {$legacy})"];
+        if (in_array($this->results[$last][1], ['written', 'overwritten'], true)) {
+            $this->results[$last] = [$distPath, "written (shadowed by {$legacy})"];
+        }
     }
 
     /** @param  array<string, string>  $replacements */

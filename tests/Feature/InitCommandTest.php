@@ -868,3 +868,45 @@ it('warns when artisan is still a symlink instead of the shim', function () {
 
     expect(is_link($this->root.'/artisan'))->toBeTrue();
 });
+
+it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy phpunit.xml also shadows it', function () {
+    // A directory at the dist target makes file_put_contents() fail deterministically: file_exists()
+    // treats it as already there (so the overwrite prompt fires), but writing to a directory path
+    // always fails, regardless of the runner's UID. This is the same "block with a real filesystem
+    // entry" trick the "records a failed outcome" test above uses for tests/Unit and tests/Feature.
+    file_put_contents($this->root.'/phpunit.xml', '<phpunit/>');
+    mkdir($this->root.'/phpunit.xml.dist', 0755, true);
+
+    bindInit($this->root);
+
+    $this->artisan('package:init')
+        ->expectsConfirmation('Add a workbench app?', 'no')
+        ->expectsConfirmation('Add browser tests?', 'no')
+        ->expectsConfirmation('Add PHPStan (Larastan)?', 'no')
+        ->expectsConfirmation('Add Rector?', 'no')
+        ->expectsConfirmation('Add Pint?', 'no')
+        ->expectsConfirmation('Overwrite phpunit.xml.dist?', 'yes')
+        ->expectsOutputToContain('phpunit.xml already exists and takes precedence over phpunit.xml.dist')
+        ->expectsPromptsTable(['File', 'Result'], [
+            ['artisan', 'written'],
+            ['.gitattributes', 'written'],
+            ['.gitignore', 'written'],
+            ['tests/Unit/.gitkeep', 'written'],
+            ['tests/Feature/.gitkeep', 'written'],
+            ['phpunit.xml.dist', 'failed'],
+            ['tests/TestCase.php', 'written'],
+            ['tests/Pest.php', 'written'],
+            ['testbench.yaml', 'written'],
+            ['composer script: test', 'added'],
+            ['composer script: check', 'added'],
+            ['composer script: post-autoload-dump', 'added'],
+            ['composer script: boost:refresh', 'added'],
+            ['composer script: post-install-cmd', 'added'],
+            ['composer script: post-update-cmd', 'added'],
+            ['boost:install', 'skipped (no vendor/bin/testbench)'],
+        ])
+        ->assertSuccessful();
+
+    expect($this->root.'/phpunit.xml.dist')->toBeDirectory()
+        ->and(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>');
+});
