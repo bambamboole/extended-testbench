@@ -45,7 +45,8 @@ Installs Pest 5 and writes `phpunit.xml.dist` (sqlite `:memory:`), `tests/TestCa
 Rector (`rector.php` plus a `refactor` script) and Pint (`pint.json` plus a `lint` script). Existing
 files are never replaced without asking.
 
-Requires PHP 8.4+ and `orchestra/testbench ^9.15|^10.6|^11.0`; Pest 5 needs PHPUnit 13.
+Requires PHP 8.4+ and `orchestra/testbench ^10.10|^11`, because Pest 5 needs PHPUnit 13 and
+earlier testbench releases only allow PHPUnit 11 or 12.
 
 ## How it works
 
