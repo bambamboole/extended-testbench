@@ -13,21 +13,21 @@ it('reports missing under check when no psr-4 entry maps to tests/', function ()
         ->and($result->label)->toBe('composer autoload-dev: Tests\\');
 });
 
-it('is a no-op reporting ok when an existing entry already maps to tests/', function () {
+it('yields nothing on either drift or apply when an existing entry already maps to tests/, and touches nothing', function () {
     $context = makeContext(['autoload-dev' => ['psr-4' => ['Acme\\Tests\\' => 'tests/']]]);
 
-    expect(first(new AutoloadEntry('Tests\\', 'tests/')->drift($context))->status)->toBe(Status::Ok)
-        ->and(iterator_to_array(new AutoloadEntry('Tests\\', 'tests/')->apply($context)))->toHaveCount(1);
+    expect(iterator_to_array(new AutoloadEntry('Tests\\', 'tests/')->drift($context), false))->toBeEmpty()
+        ->and(iterator_to_array(new AutoloadEntry('Tests\\', 'tests/')->apply($context), false))->toBeEmpty();
 
     $composerJson = $context->composerJson();
     expect($composerJson['autoload-dev']['psr-4'])->toBe(['Acme\\Tests\\' => 'tests/']);
 });
 
-it('adds the autoload-dev entry and marks the autoload changed on apply', function () {
+it('adds the autoload-dev entry and marks the autoload changed on apply, yielding nothing', function () {
     $context = makeContext();
-    $result = first(new AutoloadEntry('Tests\\', 'tests/')->apply($context));
+    $results = iterator_to_array(new AutoloadEntry('Tests\\', 'tests/')->apply($context), false);
 
-    expect($result->status)->toBe(Status::Ok)
+    expect($results)->toBeEmpty()
         ->and($context->autoloadChanged())->toBeTrue()
         ->and($context->composerJson()['autoload-dev']['psr-4']['Tests\\'])->toBe('tests/');
 });

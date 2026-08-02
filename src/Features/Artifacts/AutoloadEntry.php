@@ -26,12 +26,15 @@ final readonly class AutoloadEntry implements Artifact
         return "composer autoload-dev: {$this->namespace}";
     }
 
-    /** @return iterable<Result> */
+    /**
+     * Yields nothing once satisfied: the original testNamespace() returned as soon as it found a
+     * matching entry, in both check and apply mode, and pushed no row at all.
+     *
+     * @return iterable<Result>
+     */
     public function drift(Context $context): iterable
     {
         if ($this->satisfied($context)) {
-            yield new Result($this->label(), Status::Ok);
-
             return;
         }
 
@@ -42,9 +45,7 @@ final readonly class AutoloadEntry implements Artifact
     public function apply(Context $context): iterable
     {
         if ($this->satisfied($context)) {
-            yield new Result($this->label(), Status::Ok);
-
-            return;
+            return [];
         }
 
         $context->composer()->modify(function (array $composer): array {
@@ -55,7 +56,7 @@ final readonly class AutoloadEntry implements Artifact
 
         $context->markAutoloadChanged();
 
-        yield new Result($this->label(), Status::Ok);
+        return [];
     }
 
     private function satisfied(Context $context): bool
