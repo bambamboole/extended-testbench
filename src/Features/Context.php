@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bambamboole\ExtendedTestbench\Features;
 
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Composer;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -30,7 +31,13 @@ final class Context
         private readonly bool $canPrompt,
         private readonly array $enabled = [],
         private readonly string $phpstanLevel = '6',
+        private readonly Filesystem $files = new Filesystem,
     ) {}
+
+    public function files(): Filesystem
+    {
+        return $this->files;
+    }
 
     public function phpstanLevel(): string
     {
@@ -129,6 +136,22 @@ final class Context
         }
 
         return $this->testNamespace = 'Tests\\';
+    }
+
+    /** The package's own psr-4 namespace: the src/ mapping, or the first autoload entry. */
+    public function sourceNamespace(): ?string
+    {
+        $psr4 = (array) ($this->composerJson()['autoload']['psr-4'] ?? []);
+
+        foreach ($psr4 as $namespace => $path) {
+            if (rtrim((string) $path, '/') === 'src') {
+                return rtrim((string) $namespace, '\\');
+            }
+        }
+
+        $first = array_key_first($psr4);
+
+        return $first === null ? null : rtrim((string) $first, '\\');
     }
 
     public function hasWorkbench(): bool

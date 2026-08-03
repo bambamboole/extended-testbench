@@ -54,7 +54,7 @@ final readonly class ArtisanShim implements Artifact
     public function apply(Context $context): iterable
     {
         if ($this->symlinkedToTestbench($context)) {
-            @unlink($context->path('artisan'));
+            $context->files()->delete($context->path('artisan'));
             $context->note('artisan was a symlink to vendor/bin/testbench; replacing it with the committed shim, which survives a fresh clone and works on Windows.');
         }
 
@@ -62,7 +62,7 @@ final readonly class ArtisanShim implements Artifact
 
         $this->warnIfStillSymlinked($context);
 
-        if ($this->notExecutable($context) && @chmod($context->path('artisan'), 0755)
+        if ($this->notExecutable($context) && @$context->files()->chmod($context->path('artisan'), 0755)
             && $results !== [] && $results[0]->status === Status::Skipped) {
             return [new Result($this->label(), Status::Overwritten, 'made executable')];
         }

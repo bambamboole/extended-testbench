@@ -24,6 +24,48 @@ it('reports a missing script and adds it on apply', function () {
         ->and($context->composerJson()['scripts']['lint'])->toBe('pint --format agent');
 });
 
+it('treats an array script that contains every scaffold entry as ok', function () {
+    // A package prepending its own hook installer still runs what the scaffold wired up.
+    $context = makeContext(['scripts' => ['post-install-cmd' => ['@hooks:install', '@boost:refresh']]]);
+
+    expect(first(new Script('post-install-cmd', ['@boost:refresh'])->drift($context))->status)
+        ->toBe(Status::Ok);
+});
+
+it('still reports an array script missing a scaffold entry as differing', function () {
+    $context = makeContext(['scripts' => ['check' => ['pint --test', '@test']]]);
+
+    expect(first(new Script('check', ['pint --test', 'phpstan analyse', '@test'])->drift($context))->status)
+        ->toBe(Status::Differs);
+});
+
+it('never accepts a superset match for string scripts', function () {
+    $context = makeContext(['scripts' => ['test' => 'pest --coverage']]);
+
+    expect(first(new Script('test', 'pest')->drift($context))->status)->toBe(Status::Differs);
+});
+
+it('prints the current and scaffolded command when a script differs', function () {
+    $context = makeContext(['scripts' => ['test' => 'phpunit']]);
+
+    first(new Script('test', 'pest')->drift($context));
+
+    expect(fetchOutput($context))
+        ->toContain("composer script 'test' differs from the scaffold:")
+        ->toContain('-phpunit')
+        ->toContain('+pest');
+});
+
+it('prints array commands as json when a script differs', function () {
+    $context = makeContext(['scripts' => ['check' => ['echo "mine"']]]);
+
+    first(new Script('check', ['pint --test', '@test'])->drift($context));
+
+    expect(fetchOutput($context))
+        ->toContain('-["echo \\"mine\\""]')
+        ->toContain('+["pint --test","@test"]');
+});
+
 it('reports a script wired to a different command as differing', function () {
     $context = makeContext(['scripts' => ['check' => ['echo "mine"']]]);
 

@@ -59,7 +59,11 @@ function completeScaffold(string $root): void
         'laravel/pint',
     ] as $package) {
         $composer['require-dev'][$package] = '*';
+        // NeedsPackage trusts composer.json only when vendor/ actually holds the package.
+        mkdir($root.'/vendor/'.$package, 0755, true);
     }
+
+    $composer['config']['allow-plugins']['pestphp/pest-plugin'] = true;
 
     file_put_contents($root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     file_put_contents($root.'/boost.json', json_encode([
@@ -106,7 +110,8 @@ it('scaffolds the pest baseline when everything else is declined', function () {
         ->toContain('\Acme\Demo\DemoServiceProvider::class');
 
     expect(file_get_contents($this->root.'/tests/Pest.php'))
-        ->toContain("->in('Feature', 'Unit');");
+        ->toContain('use Tests\TestCase;')
+        ->toContain("uses(TestCase::class)->in('Feature', 'Unit');");
 
     expect(file_get_contents($this->root.'/testbench.yaml'))
         ->toContain("laravel: '@testbench'")
@@ -198,11 +203,13 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
             ['phpunit.xml.dist', 'written'],
             ['tests/TestCase.php', 'written'],
             ['tests/Pest.php', 'written'],
+            ['tests/ArchTest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -235,11 +242,13 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
             ['phpunit.xml.dist', 'written'],
             ['tests/TestCase.php', 'failed'],
             ['tests/Pest.php', 'failed'],
+            ['tests/ArchTest.php', 'failed'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -327,6 +336,7 @@ it('reports failure and records it in the summary when a composer install fails'
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['pestphp/pest:^5.0', 'failed'],
             ['pestphp/pest-plugin-laravel:^5.0', 'failed'],
             ['tests/Unit/.gitkeep', 'written'],
@@ -334,6 +344,7 @@ it('reports failure and records it in the summary when a composer install fails'
             ['phpunit.xml.dist', 'written'],
             ['tests/TestCase.php', 'written'],
             ['tests/Pest.php', 'written'],
+            ['tests/ArchTest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -866,7 +877,7 @@ it('keeps the browser suite out of test and check', function () {
 
     $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
 
-    expect($scripts['test'])->toBe('pest --testsuite=Unit,Feature')
+    expect($scripts['test'])->toBe('pest --exclude-testsuite=Browser')
         ->and($scripts['test:browser'])->toBe('pest --testsuite=Browser')
         ->and($scripts['check'])->toBe(['@test']);
 });
@@ -1166,11 +1177,13 @@ it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['tests/Unit/.gitkeep', 'written'],
             ['tests/Feature/.gitkeep', 'written'],
             ['phpunit.xml.dist', 'failed'],
             ['tests/TestCase.php', 'written'],
             ['tests/Pest.php', 'written'],
+            ['tests/ArchTest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -1193,8 +1206,9 @@ it('scaffolds a CI workflow with a php matrix, the check script and the drift ga
         ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/.github/workflows/ci.yml'))
-        ->toContain('composer check')
+        ->toContain('composer ${{ matrix.dependencies == \'lowest\' && \'test\' || \'check\' }}')
         ->toContain("php: ['8.4', '8.5']")
+        ->toContain('dependencies: [highest, lowest]')
         ->toContain('php vendor/bin/testbench package:init --check');
 });
 
