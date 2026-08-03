@@ -115,7 +115,10 @@ a CI gate:
 ```
 
 Each entry is a row label from the table. Ignored rows stay visible as `ignored (missing)` or
-`ignored (differs)` — they just stop counting toward the exit code.
+`ignored (differs)` — they just stop counting toward the exit code. An entry that ignored nothing —
+it matches no row, or only rows that are already ok — gets a warning instead of silence, so a
+resolved divergence or a renamed artifact label cannot rot the baseline; the warning never affects
+the exit code.
 
 Adopting what the check found is what `--force` is for:
 

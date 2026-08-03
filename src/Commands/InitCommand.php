@@ -295,10 +295,28 @@ final class InitCommand extends Command
             return;
         }
 
+        $used = [];
+
         foreach ($this->results as $index => $row) {
             if ($row[1] !== 'ok' && in_array($row[0], $ignored, true)) {
                 $this->results[$index] = [$row[0], "ignored ({$row[1]})"];
+                $used[] = $row[0];
             }
+        }
+
+        // An entry that ignored nothing is how the baseline rots: a renamed artifact label stops
+        // matching without a sound, and an entry kept after its divergence was fixed over-ignores
+        // forever. Said out loud, but never part of the exit code.
+        $labels = array_column($this->results, 0);
+
+        foreach ($ignored as $entry) {
+            if (in_array($entry, $used, true)) {
+                continue;
+            }
+
+            warning(in_array($entry, $labels, true)
+                ? "check-ignore entry '{$entry}' matched only rows that are already ok. It hides nothing today and would mask a future divergence — remove it."
+                : "check-ignore entry '{$entry}' matched no row. A renamed artifact label or a typo ignores nothing — fix or remove it.");
         }
     }
 
