@@ -76,7 +76,7 @@ final readonly class GitignoreEntries implements Artifact
         $contents = file_exists($path) ? (string) @file_get_contents($path) : '';
         $prefix = $contents === '' ? '' : rtrim($contents, "\n")."\n";
 
-        if (@file_put_contents($path, $prefix.implode("\n", $missing)."\n") === false) {
+        if (@$context->files()->put($path, $prefix.implode("\n", $missing)."\n") === false) {
             yield new Result($this->label(), Status::Failed);
 
             return;

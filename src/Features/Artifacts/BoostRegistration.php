@@ -72,7 +72,7 @@ final readonly class BoostRegistration implements Artifact
 
         ksort($config);
 
-        if (@file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
+        if (@$context->files()->put($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL) === false) {
             yield new Result($this->label(), Status::Failed);
 
             return;

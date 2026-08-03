@@ -69,6 +69,7 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
 
     private function ensureArtisanEntrypoint(): void
     {
+        $files = new Filesystem;
         $artisan = package_path('artisan');
 
         // Two kinds of symlink get replaced with the committed shim: a dangling one (file_exists()
@@ -76,7 +77,7 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
         // resolves locally but breaks on a fresh clone and on Windows. Any other link is the
         // user's own and is left alone.
         if (is_link($artisan) && (! file_exists($artisan) || ArtisanShim::isTestbenchSymlink($artisan, package_path()))) {
-            @unlink($artisan);
+            $files->delete($artisan);
         }
 
         if (file_exists($artisan)) {
@@ -85,12 +86,12 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
 
         $stub = (string) file_get_contents(__DIR__.'/../stubs/artisan.stub');
 
-        if (@file_put_contents($artisan, $stub) === false) {
+        if (@$files->put($artisan, $stub) === false) {
             fwrite(STDERR, "extended-testbench: could not write {$artisan}; create it manually with: require __DIR__.'/vendor/bin/testbench';".PHP_EOL);
 
             return;
         }
 
-        @chmod($artisan, 0755);
+        @$files->chmod($artisan, 0755);
     }
 }

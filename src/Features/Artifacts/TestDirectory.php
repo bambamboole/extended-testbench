@@ -33,7 +33,7 @@ final readonly class TestDirectory implements Artifact
     {
         $dir = $context->path($this->path);
 
-        if (! is_dir($dir) && ! @mkdir($dir, 0755, recursive: true)) {
+        if (! is_dir($dir) && ! @$context->files()->makeDirectory($dir, 0755, recursive: true)) {
             yield new Result($this->path, Status::Failed);
 
             return;
@@ -47,7 +47,7 @@ final readonly class TestDirectory implements Artifact
             return;
         }
 
-        if (@file_put_contents($context->path($gitkeep), '') === false) {
+        if (@$context->files()->put($context->path($gitkeep), '') === false) {
             yield new Result($gitkeep, Status::Failed);
 
             return;

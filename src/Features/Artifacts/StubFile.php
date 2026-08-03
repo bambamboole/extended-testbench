@@ -73,7 +73,7 @@ final readonly class StubFile implements Artifact
         // A dangling symlink makes file_exists() report false, so onlyIfMissing would not trip and
         // file_put_contents() would write through the link, creating whatever it pointed at.
         if (is_link($target) && ! file_exists($target)) {
-            @unlink($target);
+            $context->files()->delete($target);
         }
 
         $existed = file_exists($target);
@@ -103,13 +103,13 @@ final readonly class StubFile implements Artifact
             }
         }
 
-        if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0755, recursive: true)) {
+        if (! is_dir(dirname($target)) && ! @$context->files()->makeDirectory(dirname($target), 0755, recursive: true)) {
             yield $this->result($context, Status::Failed);
 
             return;
         }
 
-        if (@file_put_contents($target, $rendered) === false) {
+        if (@$context->files()->put($target, $rendered) === false) {
             yield $this->result($context, Status::Failed);
 
             return;

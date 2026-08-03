@@ -62,10 +62,9 @@ final readonly class PestSuiteLine implements Artifact
             return;
         }
 
-        file_put_contents(
+        $context->files()->append(
             $pest,
             sprintf("\nuses(\\%s::class)->in('%s');\n", $this->testCase, $this->suite),
-            FILE_APPEND,
         );
 
         yield new Result($this->label(), Status::Written, sprintf('%s suite appended', strtolower($this->suite)));
