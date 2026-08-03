@@ -918,7 +918,7 @@ it('scaffolds the testbench autoload hooks and a guarded boost refresh', functio
         ->and($scripts['post-install-cmd'])->toBe(['@boost:refresh'])
         ->and($scripts['post-update-cmd'])->toBe(['@boost:refresh'])
         ->and($scripts['boost:refresh'])->toBe(
-            '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true',
+            '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || { [ -f package.json ] && [ ! -d node_modules ]; } || vendor/bin/testbench boost:update --no-interaction || true',
         );
 });
 

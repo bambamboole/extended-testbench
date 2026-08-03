@@ -28,7 +28,7 @@ final readonly class ComposerScriptsFeature implements Feature
             '@php vendor/bin/testbench package:discover --ansi',
         ]);
 
-        yield new Script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true');
+        yield new Script('boost:refresh', '[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || { [ -f package.json ] && [ ! -d node_modules ]; } || vendor/bin/testbench boost:update --no-interaction || true');
         yield new Script('post-install-cmd', ['@boost:refresh']);
         yield new Script('post-update-cmd', ['@boost:refresh']);
     }

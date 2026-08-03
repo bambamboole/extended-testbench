@@ -44,7 +44,7 @@ it('declares the remaining boost/autoload scripts byte-for-byte, in order', func
         '@php vendor/bin/testbench package:purge-skeleton --ansi',
         '@php vendor/bin/testbench package:discover --ansi',
     ])
-        ->and($scripts['boost:refresh'])->toBe('[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true')
+        ->and($scripts['boost:refresh'])->toBe('[ -n "$CI" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || { [ -f package.json ] && [ ! -d node_modules ]; } || vendor/bin/testbench boost:update --no-interaction || true')
         ->and($scripts['post-install-cmd'])->toBe(['@boost:refresh'])
         ->and($scripts['post-update-cmd'])->toBe(['@boost:refresh']);
 });
