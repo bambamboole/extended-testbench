@@ -138,6 +138,22 @@ final class Context
         return $this->testNamespace = 'Tests\\';
     }
 
+    /** The package's own psr-4 namespace: the src/ mapping, or the first autoload entry. */
+    public function sourceNamespace(): ?string
+    {
+        $psr4 = (array) ($this->composerJson()['autoload']['psr-4'] ?? []);
+
+        foreach ($psr4 as $namespace => $path) {
+            if (rtrim((string) $path, '/') === 'src') {
+                return rtrim((string) $namespace, '\\');
+            }
+        }
+
+        $first = array_key_first($psr4);
+
+        return $first === null ? null : rtrim((string) $first, '\\');
+    }
+
     public function hasWorkbench(): bool
     {
         return is_dir($this->path('workbench/app'));

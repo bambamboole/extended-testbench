@@ -6,7 +6,7 @@ use Bambamboole\ExtendedTestbench\Features\Artifact;
 use Bambamboole\ExtendedTestbench\Features\PestFeature;
 
 it('adds the Browser testsuite and narrows the test script when browser is enabled', function () {
-    $context = makeContext(flags: ['browser' => true]);
+    $context = makeContext(flags: ['browser' => true], installs: true);
     $artifacts = iterator_to_array((new PestFeature)->artifacts($context), false);
     $labels = array_map(fn (Artifact $a): string => $a->label(), $artifacts);
 
@@ -18,11 +18,11 @@ it('adds the Browser testsuite and narrows the test script when browser is enabl
     }
 
     expect(file_get_contents($context->path('phpunit.xml.dist')))->toContain('name="Browser"')
-        ->and($context->composerJson()['scripts']['test'])->toBe('pest --testsuite=Unit,Feature');
+        ->and($context->composerJson()['scripts']['test'])->toBe('pest --exclude-testsuite=Browser');
 });
 
 it('leaves the Browser testsuite out when browser is disabled', function () {
-    $context = makeContext();
+    $context = makeContext(installs: true);
 
     applyAll((new PestFeature)->artifacts($context), $context);
 
@@ -49,6 +49,7 @@ it('declares artifacts in row order', function () {
         'composer autoload-dev: Tests\\',
         'tests/TestCase.php',
         'tests/Pest.php',
+        'tests/ArchTest.php',
         'testbench.yaml',
         'composer script: test',
     ]);
@@ -59,7 +60,7 @@ it('is always on', function () {
 });
 
 it('adds the workbench block and a correctly framed providers list to testbench.yaml', function () {
-    $context = makeContext(['extra' => ['laravel' => ['providers' => ['Acme\\Demo\\DemoServiceProvider']]]], flags: ['workbench' => true]);
+    $context = makeContext(['extra' => ['laravel' => ['providers' => ['Acme\\Demo\\DemoServiceProvider']]]], flags: ['workbench' => true], installs: true);
 
     applyAll((new PestFeature)->artifacts($context), $context);
 
@@ -67,7 +68,7 @@ it('adds the workbench block and a correctly framed providers list to testbench.
         ->toContain('workbench:')
         ->toContain("\nproviders:\n  - Acme\\Demo\\DemoServiceProvider\n");
 
-    $without = makeContext();
+    $without = makeContext(installs: true);
 
     applyAll((new PestFeature)->artifacts($without), $without);
 
@@ -76,8 +77,29 @@ it('adds the workbench block and a correctly framed providers list to testbench.
         ->not->toContain('providers:');
 });
 
+it('scaffolds an arch test pinned to the package namespace', function () {
+    $context = makeContext(['autoload' => ['psr-4' => ['Acme\\Demo\\' => 'src/']]], installs: true);
+
+    applyAll((new PestFeature)->artifacts($context), $context);
+
+    expect(file_get_contents($context->path('tests/ArchTest.php')))
+        ->toContain("->expect(['dd', 'ddd', 'dump', 'ray', 'var_dump', 'print_r'])")
+        ->toContain("->expect('Acme\\Demo')")
+        ->toContain('->toUseStrictTypes();');
+});
+
+it('drops the strict-types arch rule when the package declares no autoload namespace', function () {
+    $context = makeContext(installs: true);
+
+    applyAll((new PestFeature)->artifacts($context), $context);
+
+    expect(file_get_contents($context->path('tests/ArchTest.php')))
+        ->toContain('->not->toBeUsed();')
+        ->not->toContain('toUseStrictTypes');
+});
+
 it('adds the autoload-dev Tests namespace when missing', function () {
-    $context = makeContext();
+    $context = makeContext(installs: true);
 
     applyAll((new PestFeature)->artifacts($context), $context);
 
@@ -85,7 +107,7 @@ it('adds the autoload-dev Tests namespace when missing', function () {
 });
 
 it('never overwrites tests/TestCase.php once it exists', function () {
-    $context = makeContext();
+    $context = makeContext(installs: true);
     mkdir($context->path('tests'), 0755, true);
     file_put_contents($context->path('tests/TestCase.php'), "<?php\n// hand-written\n");
 
@@ -95,7 +117,7 @@ it('never overwrites tests/TestCase.php once it exists', function () {
 });
 
 it('warns that a legacy phpunit.xml shadows the generated phpunit.xml.dist', function () {
-    $context = makeContext(force: true);
+    $context = makeContext(force: true, installs: true);
     file_put_contents($context->path('phpunit.xml'), '<phpunit/>');
 
     applyAll((new PestFeature)->artifacts($context), $context);
