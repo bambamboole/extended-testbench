@@ -1186,7 +1186,7 @@ it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy
         ->and(file_get_contents($this->root.'/phpunit.xml'))->toBe('<phpunit/>');
 });
 
-it('scaffolds a CI workflow that runs the check script', function () {
+it('scaffolds a CI workflow with a php matrix, the check script and the drift gate', function () {
     bindInit($this->root);
 
     $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
@@ -1194,7 +1194,8 @@ it('scaffolds a CI workflow that runs the check script', function () {
 
     expect(file_get_contents($this->root.'/.github/workflows/ci.yml'))
         ->toContain('composer check')
-        ->toContain("php-version: '8.4'");
+        ->toContain("php: ['8.4', '8.5']")
+        ->toContain('php vendor/bin/testbench package:init --check');
 });
 
 it('scaffolds a testbench.yaml that keeps the app in the local environment boost needs', function () {
