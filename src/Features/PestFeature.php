@@ -40,9 +40,7 @@ final readonly class PestFeature implements Feature
 
         yield new PhpunitConfig($context->enabled('browser'));
 
-        // testNamespace() resolves (and, if missing, registers) the autoload-dev entry the moment
-        // it is first called — which the original did while building tests/TestCase.php's
-        // replacements. Its row, when unsatisfied, has to land here to match.
+        // Before tests/TestCase.php, whose replacements are the first to call testNamespace().
         yield new AutoloadEntry('Tests\\', 'tests/');
 
         yield new StubFile('tests/TestCase.php', 'TestCase.php.stub', [

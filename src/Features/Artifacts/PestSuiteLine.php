@@ -11,9 +11,8 @@ use Bambamboole\ExtendedTestbench\Features\Status;
 
 /**
  * A `uses(...)->in($suite)` mapping appended to tests/Pest.php — today only the Browser suite,
- * mapped to a dedicated TestCase so the Vite manifest guard runs. Ports browser()'s Pest.php append
- * block, generalised over the suite name and the fully-qualified test case class (without leading
- * backslash) it maps to: for the Browser suite these are 'Browser' and "{$testNamespace}BrowserTestCase".
+ * mapped to a dedicated TestCase so the Vite manifest guard runs. $testCase is fully qualified
+ * without a leading backslash, e.g. "{$testNamespace}BrowserTestCase".
  */
 final readonly class PestSuiteLine implements Artifact
 {
@@ -27,12 +26,7 @@ final readonly class PestSuiteLine implements Artifact
         return 'tests/Pest.php';
     }
 
-    /**
-     * Yields nothing when tests/Pest.php does not exist yet — the original returned before pushing
-     * any row in that case, in both check and apply mode.
-     *
-     * @return iterable<Result>
-     */
+    /** @return iterable<Result> */
     public function drift(Context $context): iterable
     {
         $pest = $context->path('tests/Pest.php');

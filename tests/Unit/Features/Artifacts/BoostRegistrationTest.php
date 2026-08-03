@@ -3,28 +3,7 @@
 declare(strict_types=1);
 
 use Bambamboole\ExtendedTestbench\Features\Artifacts\BoostRegistration;
-use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Status;
-use Illuminate\Filesystem\Filesystem;
-use Illuminate\Support\Composer;
-use Symfony\Component\Console\Output\BufferedOutput;
-
-/** A Context in checking mode — makeContext() always builds a non-checking one. */
-function boostCheckingContext(): Context
-{
-    $root = sys_get_temp_dir().'/etb-boost-'.bin2hex(random_bytes(4));
-    mkdir($root, 0755, true);
-    file_put_contents($root.'/composer.json', json_encode(['name' => 'acme/demo'], JSON_PRETTY_PRINT));
-
-    return new Context(
-        root: $root,
-        composer: new Composer(new Filesystem, $root),
-        output: new BufferedOutput,
-        checking: true,
-        force: false,
-        canPrompt: false,
-    );
-}
 
 it('labels itself boost.json', function () {
     expect(new BoostRegistration('bambamboole/extended-testbench')->label())->toBe('boost.json');
@@ -33,12 +12,12 @@ it('labels itself boost.json', function () {
 it('reports missing under check when boost.json does not exist, and yields nothing on apply', function () {
     $artifact = new BoostRegistration('bambamboole/extended-testbench');
 
-    expect(first($artifact->drift(boostCheckingContext()))->status)->toBe(Status::Missing)
+    expect(first($artifact->drift(makeContext(checking: true)))->status)->toBe(Status::Missing)
         ->and(iterator_to_array($artifact->apply(makeContext()), false))->toBeEmpty();
 });
 
 it('reports unreadable json under check with detail "unreadable"', function () {
-    $context = boostCheckingContext();
+    $context = makeContext(checking: true);
     file_put_contents($context->path('boost.json'), '{not valid json');
 
     $result = first(new BoostRegistration('bambamboole/extended-testbench')->drift($context));
@@ -60,10 +39,10 @@ it('reports unreadable json under apply with detail "failed (unreadable)"', func
 });
 
 it('reports the packages key under check, ok when registered and missing when not', function () {
-    $registered = boostCheckingContext();
+    $registered = makeContext(checking: true);
     file_put_contents($registered->path('boost.json'), json_encode(['packages' => ['bambamboole/extended-testbench']]));
 
-    $notRegistered = boostCheckingContext();
+    $notRegistered = makeContext(checking: true);
     file_put_contents($notRegistered->path('boost.json'), json_encode(['packages' => ['acme/other']]));
 
     $artifact = new BoostRegistration('bambamboole/extended-testbench');
@@ -123,7 +102,3 @@ it('does not duplicate an already registered package alongside others', function
     $boost = json_decode((string) file_get_contents($context->path('boost.json')), true);
     expect($boost['packages'])->toBe(['bambamboole/extended-testbench', 'acme/other']);
 });
-
-// The Failed write branch (file_put_contents() failing) is not exercised here: simulating a real
-// filesystem failure warns noisily and unreliably across platforms. Same gap, same reasoning as
-// StubFile's Failed paths (Task 3 ledger); closes when a later task wires this into the command.

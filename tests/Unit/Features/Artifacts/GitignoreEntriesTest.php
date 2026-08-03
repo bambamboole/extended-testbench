@@ -63,10 +63,6 @@ it('skips writing when nothing is missing', function () {
         ->and(file_get_contents($context->path('.gitignore')))->toBe("/vendor/\n");
 });
 
-// The Failed branch (file_put_contents() failing) is not exercised here: simulating a real
-// filesystem failure warns noisily and unreliably across platforms. Same gap, same reasoning as
-// StubFile's Failed paths (Task 3 ledger); closes when Task 11 wires this into the command.
-
 it('labels itself .gitignore', function () {
     expect(new GitignoreEntries('/vendor/')->label())->toBe('.gitignore');
 });

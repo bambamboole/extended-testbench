@@ -9,12 +9,10 @@ use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Result;
 
 /**
- * phpunit.xml.dist, plus the warning pest() fires when browser tests are enabled but the file that
- * ends up on disk still lacks the Browser testsuite. That is reachable whenever the wrapped
- * StubFile's write is a no-op or fails: an existing file kept on a declined overwrite prompt, a
- * headless run without --force, a failed write, or --check itself (which never writes at all) —
- * so the check has to read whatever is actually on disk after the write attempt, in both drift()
- * and apply(), the same way the original pest() ran it unconditionally after write().
+ * phpunit.xml.dist, plus a warning when browser tests are enabled but the file on disk still lacks
+ * the Browser testsuite. That is reachable whenever the wrapped StubFile's write is a no-op or
+ * fails: a declined overwrite prompt, a headless run without --force, a failed write, or --check
+ * itself — so the check reads what is actually on disk after the write attempt, in both modes.
  */
 final readonly class PhpunitConfig implements Artifact
 {
@@ -39,30 +37,24 @@ final readonly class PhpunitConfig implements Artifact
         return 'phpunit.xml.dist';
     }
 
-    /**
-     * Drained eagerly, and the trailing warning checked, before anything is yielded: a caller that
-     * only pulls the first result (as first() does) must still see the warning, the same way
-     * ArtisanShim drains its wrapped StubFile before warning.
-     *
-     * @return iterable<Result>
-     */
+    /** @return array<int, Result> */
     public function drift(Context $context): iterable
     {
         $results = iterator_to_array($this->stub->drift($context), false);
 
         $this->warnIfBrowserSuiteMissing($context);
 
-        yield from $results;
+        return $results;
     }
 
-    /** @return iterable<Result> */
+    /** @return array<int, Result> */
     public function apply(Context $context): iterable
     {
         $results = iterator_to_array($this->stub->apply($context), false);
 
         $this->warnIfBrowserSuiteMissing($context);
 
-        yield from $results;
+        return $results;
     }
 
     private function warnIfBrowserSuiteMissing(Context $context): void

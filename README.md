@@ -153,15 +153,16 @@ so only testbench 11 (Laravel 13) resolves. `pest-plugin-browser` additionally r
 
 ### Feature list
 
-Internally, `package:init` runs its work as an ordered list of `Feature` classes, each declaring the
-files, packages and composer scripts it owns and the row those write to the result table above. The
+Internally, `package:init` runs its work as an ordered list of `Feature`s, each declaring the files,
+packages and composer scripts it owns and the row those write to the result table above. A feature
+whose artifacts do not depend on the run is a plain `StaticFeature`; the rest are named classes. The
 list is internal — there is no public API to register a feature from outside this package — and its
 order is fixed:
 
-1. `EntrypointFeature` — the `artisan` shim
-2. `GitFeature` — `.gitattributes`
-3. `CiFeature` — the CI workflow
-4. `GitignoreFeature` — `.gitignore` entries
+1. the `artisan` shim
+2. `.gitattributes`
+3. the CI workflow
+4. `.gitignore` entries
 5. `PestFeature` — the Pest/PHPUnit baseline
 6. `WorkbenchFeature` — the workbench app
 7. `BrowserFeature` — browser tests

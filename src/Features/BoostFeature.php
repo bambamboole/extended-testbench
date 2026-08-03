@@ -22,15 +22,11 @@ final readonly class BoostFeature implements Feature
     {
         yield new BoostRun($this->boostCommand($context));
 
-        // Registration has to follow the boost run, because boost:install is what creates
-        // boost.json in the first place — but Boost composes the guidelines during that same run,
-        // before our name is in the packages key. Snapshotting whether we were already registered
-        // here, right before BoostRegistration can change that (this resumes only after BoostRun
-        // has been fully applied, same as before), is what lets ComposeGuideline tell "just added"
-        // apart from "was already there" without this Feature being able to branch on
-        // BoostRegistration's own result. A plain local variable, not Context state: nothing else
-        // needs it, and Context has no business carrying a field only two artifacts care about.
-        $registeredBefore = $this->registered($context);
+        // Registration has to follow the boost run: boost:install is what creates boost.json, but
+        // Boost composes the guidelines during that same run, before our name is in the packages
+        // key. Snapshotting here — this resumes only once BoostRun has been fully applied — is what
+        // lets ComposeGuideline tell "just added" from "was already there".
+        $registeredBefore = BoostJson::registers($context, self::PACKAGE);
 
         yield new BoostRegistration(self::PACKAGE);
 
@@ -43,19 +39,5 @@ final readonly class BoostFeature implements Feature
         return file_exists($context->path('boost.json'))
             ? ['boost:update', '--discover']
             : ['boost:install'];
-    }
-
-    private function registered(Context $context): bool
-    {
-        $path = $context->path('boost.json');
-
-        if (! file_exists($path)) {
-            return false;
-        }
-
-        $config = json_decode((string) @file_get_contents($path), true);
-        $packages = is_array($config) && is_array($config['packages'] ?? null) ? $config['packages'] : [];
-
-        return in_array(self::PACKAGE, $packages, true);
     }
 }

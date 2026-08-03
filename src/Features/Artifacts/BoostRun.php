@@ -10,15 +10,10 @@ use Bambamboole\ExtendedTestbench\Features\Result;
 use Bambamboole\ExtendedTestbench\Features\Status;
 
 /**
- * Runs `boost:install` (no boost.json yet) or `boost:update --discover` (boost.json already
- * exists) — the same choice BoostFeature's boostCommand() makes. Wraps a ProcessStep for the
- * actual subprocess (its `?array $ttyCommand` exists precisely for this TTY/non-TTY argv
- * asymmetry), the same way ComposeGuideline wraps one — ProcessStep alone cannot express the
- * missing-binary guard (skip with a note, no process run at all) or the failure note pointing at
- * APP_ENV=local, so those stay here around it.
- *
- * label() is the given command joined with a space ('boost:install' or 'boost:update --discover'),
- * matching the original's `implode(' ', $command)`.
+ * Runs `boost:install` (no boost.json yet) or `boost:update --discover` (it already exists), as
+ * chosen by BoostFeature. Wraps a ProcessStep for the subprocess itself — ProcessStep alone cannot
+ * express the missing-binary guard (skip with a note, no process run) or the APP_ENV=local failure
+ * note, so those stay here around it.
  */
 final readonly class BoostRun implements Artifact
 {
@@ -30,29 +25,19 @@ final readonly class BoostRun implements Artifact
         return implode(' ', $this->command);
     }
 
-    /**
-     * The original returns from boost() before doing anything under --check, with no row pushed
-     * at all. NotCheckable is what the runner omits from the drift table for that, the same idiom
-     * PlaywrightFeature relies on for `npx playwright install`.
-     *
-     * @return iterable<Result>
-     */
+    /** @return array<int, Result> */
     public function drift(Context $context): iterable
     {
-        yield new Result($this->label(), Status::NotCheckable);
+        return [new Result($this->label(), Status::NotCheckable)];
     }
 
-    /** @return iterable<Result> */
+    /** @return array<int, Result> */
     public function apply(Context $context): iterable
     {
         if (! is_file($context->path('vendor/bin/testbench'))) {
-            // Noted before anything is yielded, not after: a first()-only consumer must still see
-            // it, the same reason WorkbenchApp drains eagerly before warning.
             $context->note("Run vendor/bin/testbench {$this->label()} to compose the guidelines.");
 
-            yield new Result($this->label(), Status::Skipped, 'skipped (no vendor/bin/testbench)');
-
-            return;
+            return [new Result($this->label(), Status::Skipped, 'skipped (no vendor/bin/testbench)')];
         }
 
         // The TTY branch drops --no-interaction (so Boost's interactive wizard still works on a
@@ -62,8 +47,6 @@ final readonly class BoostRun implements Artifact
 
         $step = new ProcessStep($this->label(), [...$prefix, '--no-interaction'], ttyCommand: $prefix);
 
-        // Drained eagerly, and the failure note fired, before anything is yielded: a first()-only
-        // consumer must still see it, same reason ComposeGuideline drains its wrapped step first.
         $results = iterator_to_array($step->apply($context), false);
 
         foreach ($results as $result) {
@@ -72,6 +55,6 @@ final readonly class BoostRun implements Artifact
             }
         }
 
-        yield from $results;
+        return $results;
     }
 }

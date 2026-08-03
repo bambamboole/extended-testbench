@@ -29,26 +29,21 @@ final readonly class ArtisanShim implements Artifact
         return 'artisan';
     }
 
-    /** @return iterable<Result> */
+    /** @return array<int, Result> */
     public function drift(Context $context): iterable
     {
         if ($this->symlinkedToTestbench($context)) {
-            yield new Result($this->label(), Status::Differs, 'differs (symlink, not the committed shim)');
-
-            return;
+            return [new Result($this->label(), Status::Differs, 'differs (symlink, not the committed shim)')];
         }
 
-        // Drained eagerly, and the trailing warning fired, before anything is yielded: a caller
-        // that only pulls the first result (as first() does) must still see the warning, the same
-        // way StubFile fires its shadow warning inside result() before yielding, rather than after.
         $results = iterator_to_array($this->stub->drift($context), false);
 
         $this->warnIfStillSymlinked($context);
 
-        yield from $results;
+        return $results;
     }
 
-    /** @return iterable<Result> */
+    /** @return array<int, Result> */
     public function apply(Context $context): iterable
     {
         if ($this->symlinkedToTestbench($context)) {
@@ -60,15 +55,20 @@ final readonly class ArtisanShim implements Artifact
 
         $this->warnIfStillSymlinked($context);
 
-        yield from $results;
+        return $results;
     }
 
     private function symlinkedToTestbench(Context $context): bool
     {
-        $path = $context->path('artisan');
-        $binary = realpath($context->path('vendor/bin/testbench'));
+        return self::isTestbenchSymlink($context->path('artisan'), $context->root());
+    }
 
-        return is_link($path) && $binary !== false && realpath($path) === $binary;
+    /** Also called from the service provider, which recreates the shim outside a Context. */
+    public static function isTestbenchSymlink(string $artisan, string $root): bool
+    {
+        $binary = realpath($root.'/vendor/bin/testbench');
+
+        return is_link($artisan) && $binary !== false && realpath($artisan) === $binary;
     }
 
     private function warnIfStillSymlinked(Context $context): void

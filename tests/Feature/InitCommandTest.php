@@ -24,17 +24,12 @@ afterEach(function () {
 });
 
 /**
- * Binds a concrete InitCommand instance rooted at the temp package into the
- * container, so `$this->artisan('package:init')` resolves it instead of the
- * real singleton the service provider registers (which is rooted at
- * package_path() — this repository itself). Never let that real singleton
- * resolve in a test: it would write into this repo and shell out to a real
- * `composer require`.
+ * Binds an InitCommand rooted at the temp package, so `$this->artisan('package:init')` resolves it
+ * instead of the service provider's singleton — which is rooted at package_path(), this repository
+ * itself, and would write into it and shell out to a real `composer require`.
  *
- * The Composer double keeps the real hasPackage()/modify() (they only touch
- * the temp composer.json) and stubs out the two methods that shell out.
- * `$installs` controls what `requirePackages()` returns, so a test can
- * simulate a failed `composer require`.
+ * The Composer double keeps the real hasPackage()/modify() (they only touch the temp
+ * composer.json) and stubs the two methods that shell out.
  */
 function bindInit(string $root, bool $installs = true): void
 {
@@ -47,10 +42,9 @@ function bindInit(string $root, bool $installs = true): void
 }
 
 /**
- * Brings the temp package to the state a real `package:init` leaves behind, so that --check has
- * nothing legitimate to report. The Composer double never writes the require-dev entries it claims
- * to install and Boost never runs, so both would otherwise show up as drift the command is right
- * about — a real package that ran init has the packages installed and boost.json registered.
+ * Brings the temp package to the state a real `package:init` leaves behind, so --check has nothing
+ * legitimate to report: the Composer double never writes the require-dev entries it claims to
+ * install, and Boost never runs, so both would otherwise show up as drift.
  */
 function completeScaffold(string $root): void
 {

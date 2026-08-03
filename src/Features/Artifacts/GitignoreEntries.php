@@ -23,6 +23,25 @@ final readonly class GitignoreEntries implements Artifact
         $this->entries = $entries;
     }
 
+    /** What every scaffolded package needs ignored: build output, and the agent scratch trees. */
+    public static function defaults(): self
+    {
+        return new self(
+            '/vendor/',
+            '/composer.lock',
+            '/.phpunit.cache/',
+            '/CLAUDE.md',
+            '/AGENTS.md',
+            '/.mcp.json',
+            '/.claude/skills/',
+            '/.agents/',
+            '/.junie/',
+            '/.codex/',
+            '/.superpowers/',
+            '/docs/superpowers/',
+        );
+    }
+
     public function label(): string
     {
         return '.gitignore';

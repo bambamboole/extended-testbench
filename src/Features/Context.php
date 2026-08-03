@@ -29,7 +29,13 @@ final class Context
         private readonly bool $force,
         private readonly bool $canPrompt,
         private readonly array $enabled = [],
+        private readonly string $phpstanLevel = '6',
     ) {}
+
+    public function phpstanLevel(): string
+    {
+        return $this->phpstanLevel;
+    }
 
     public function path(string $relative): string
     {

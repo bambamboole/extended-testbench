@@ -24,24 +24,15 @@ afterEach(function () {
 });
 
 /**
- * Pins the ordering InitCommand::handle() relies on: Composer::dumpAutoloads() shells out to
- * `composer dump-autoload` without --no-scripts, so it fires this same run's freshly-written
- * post-autoload-dump script (package:purge-skeleton + package:discover) as a side effect — a
- * reordering of two subprocesses relative to the Boost run, not just an autoloader regen. A future
- * accidental reorder (moving the dumpAutoloads() call back above scaffold(), or splitting scaffold()
- * so Boost runs after it) must fail this test rather than silently changing first-run behaviour for
- * new adopters.
+ * dumpAutoloads() shells out without --no-scripts, firing this run's freshly-written
+ * post-autoload-dump script (package:purge-skeleton + package:discover) as a side effect, so moving
+ * it above scaffold() reorders two subprocesses relative to the Boost run rather than just
+ * regenerating an autoloader. Reading boost.json from inside dumpAutoloads() proves the Boost
+ * artifacts were already applied by then; it is seeded with a foreign package so BoostRegistration
+ * has something to write without vendor/bin/testbench being present.
  *
- * boost.json is seeded up front with a foreign package already registered, so BoostRegistration has
- * something concrete to write: a package with no vendor/bin/testbench never shells out to Boost, so
- * the file write is the only Boost side effect this run produces. Reading boost.json from inside
- * dumpAutoloads() is what proves that write already happened by the time Composer would fire the
- * scripts.
- *
- * A plain Composer subclass is used instead of the Mockery double every other test relies on:
- * capturing a value *during* the dumpAutoloads() call needs andReturnUsing(), which lives on
- * Mockery's concrete Expectation class rather than on ExpectationInterface, so PHPStan cannot see it
- * through shouldReceive()'s declared return type.
+ * A plain Composer subclass rather than the usual Mockery double: capturing a value *during* the
+ * call needs andReturnUsing(), which PHPStan cannot see through ExpectationInterface.
  */
 it('calls dumpAutoloads only after the Boost artifacts have been applied', function () {
     file_put_contents($this->root.'/boost.json', json_encode([
@@ -79,13 +70,10 @@ it('calls dumpAutoloads only after the Boost artifacts have been applied', funct
 });
 
 /**
- * InitCommand::handle() resolves `--playwright` by reading `$enabled['browser'] ?? false` — a key
- * the same loop only fills in if BrowserFeature's flag was already resolved this iteration, which
- * only holds because features() lists BrowserFeature before PlaywrightFeature. Nothing else pins that
- * ordering dependency: every other test either omits --browser or omits --playwright, so a reorder of
- * features() would silently resolve playwright false (and print a bogus "no effect" warning) without
- * a single test noticing. npx may not exist in this environment, so this asserts the row was reached
- * (even a `failed` row proves that) rather than that the subprocess itself succeeded.
+ * handle() resolves `--playwright` from `$enabled['browser'] ?? false`, a key only filled in
+ * because features() lists BrowserFeature first. Nothing else pins that: every other test omits one
+ * of the two flags, so a reorder would silently resolve playwright false without a failure. npx may
+ * not exist here, so this asserts the row was reached — even a `failed` row proves it.
  */
 it('runs the playwright step when both --browser and --playwright are passed', function () {
     /** @var Composer&MockInterface $composer */

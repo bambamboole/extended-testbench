@@ -21,7 +21,7 @@ final readonly class RectorFeature implements Feature
         yield new NeedsPackage('rector/rector:^2.0');
 
         yield new StubFile('rector.php', 'rector.php.stub', [
-            // From the real directory, not enabled('workbench') — it may exist from an earlier run.
+            // From the real directory, not the flag: it may exist from an earlier run.
             'workbench_path' => $context->hasWorkbench() ? ", __DIR__.'/workbench/app'" : '',
         ]);
 

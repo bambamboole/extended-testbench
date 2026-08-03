@@ -26,12 +26,7 @@ final readonly class AutoloadEntry implements Artifact
         return "composer autoload-dev: {$this->namespace}";
     }
 
-    /**
-     * Yields nothing once satisfied: the original testNamespace() returned as soon as it found a
-     * matching entry, in both check and apply mode, and pushed no row at all.
-     *
-     * @return iterable<Result>
-     */
+    /** @return iterable<Result> */
     public function drift(Context $context): iterable
     {
         if ($this->satisfied($context)) {

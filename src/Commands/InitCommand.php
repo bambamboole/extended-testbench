@@ -4,21 +4,21 @@ declare(strict_types=1);
 
 namespace Bambamboole\ExtendedTestbench\Commands;
 
+use Bambamboole\ExtendedTestbench\Features\Artifacts\ArtisanShim;
+use Bambamboole\ExtendedTestbench\Features\Artifacts\GitignoreEntries;
+use Bambamboole\ExtendedTestbench\Features\Artifacts\StubFile;
 use Bambamboole\ExtendedTestbench\Features\BoostFeature;
 use Bambamboole\ExtendedTestbench\Features\BrowserFeature;
-use Bambamboole\ExtendedTestbench\Features\CiFeature;
 use Bambamboole\ExtendedTestbench\Features\ComposerScriptsFeature;
 use Bambamboole\ExtendedTestbench\Features\Context;
-use Bambamboole\ExtendedTestbench\Features\EntrypointFeature;
 use Bambamboole\ExtendedTestbench\Features\Feature;
 use Bambamboole\ExtendedTestbench\Features\Flag;
-use Bambamboole\ExtendedTestbench\Features\GitFeature;
-use Bambamboole\ExtendedTestbench\Features\GitignoreFeature;
 use Bambamboole\ExtendedTestbench\Features\PestFeature;
 use Bambamboole\ExtendedTestbench\Features\PhpstanFeature;
 use Bambamboole\ExtendedTestbench\Features\PintFeature;
 use Bambamboole\ExtendedTestbench\Features\PlaywrightFeature;
 use Bambamboole\ExtendedTestbench\Features\RectorFeature;
+use Bambamboole\ExtendedTestbench\Features\StaticFeature;
 use Bambamboole\ExtendedTestbench\Features\Status;
 use Bambamboole\ExtendedTestbench\Features\WorkbenchFeature;
 use Illuminate\Console\Command;
@@ -47,8 +47,6 @@ final class InitCommand extends Command
         private readonly Composer $composer,
         private readonly string $root,
     ) {
-        // Every section flag comes from the feature that owns it, so a new feature ships its own
-        // --name/--no-name pair rather than needing this string edited alongside it.
         $this->signature = 'package:init
         {--check : Report how this package diverges from the scaffold and write nothing}
         {--defaults : Accept every default without prompting}
@@ -63,9 +61,8 @@ final class InitCommand extends Command
 
     public function handle(): int
     {
-        // The command is a container singleton and Artisan caches the instance it resolves, so a
-        // second invocation in the same process (a --check after an init, anything programmatic)
-        // would otherwise report the first run's rows on top of its own.
+        // The command is a container singleton and Artisan caches the resolved instance, so a
+        // second invocation in the same process would stack its rows on the first run's.
         $this->results = [];
 
         if (! $this->canPrompt() && ! $this->option('defaults') && ! $this->checking() && ! $this->hasSectionFlag()) {
@@ -88,8 +85,8 @@ final class InitCommand extends Command
         $level = '6';
 
         foreach ($this->flags() as $flag) {
-            // Playwright is gated on browser tests and is not even asked without them: installing
-            // browsers nothing will drive is never what the answer meant.
+            // Not even asked without browser tests: installing browsers nothing will drive is
+            // never what the answer meant. Relies on features() listing BrowserFeature first.
             if ($flag->name === 'playwright' && ! ($enabled['browser'] ?? false)) {
                 $enabled['playwright'] = false;
 
@@ -102,8 +99,7 @@ final class InitCommand extends Command
 
             $enabled[$flag->name] = $this->resolve($flag->name, $flag->question, $flag->default);
 
-            // The level question belongs to the phpstan answer, so it is asked right after it
-            // rather than after every section has been decided.
+            // Asked right after the phpstan answer it belongs to, not after every other section.
             if ($flag->name === 'phpstan') {
                 $level = $this->phpstanLevel($enabled['phpstan']);
             }
@@ -117,19 +113,19 @@ final class InitCommand extends Command
             force: $this->option('force') === true,
             canPrompt: $this->canPrompt(),
             enabled: $enabled,
+            phpstanLevel: $level,
         );
 
-        $this->scaffold($context, $level);
+        $this->scaffold($context);
 
         if ($context->autoloadChanged()) {
-            // Not inert: Composer::dumpAutoloads() runs `composer dump-autoload` without
-            // --no-scripts, so it fires this same run's freshly written post-autoload-dump script —
-            // package:purge-skeleton and package:discover, two subprocesses — as a side effect.
+            // Not inert: this runs `composer dump-autoload` without --no-scripts, firing the
+            // post-autoload-dump script this same run just wrote (two more subprocesses).
             $this->composer->dumpAutoloads();
         }
 
         if ($this->checking()) {
-            $this->applyCheckIgnores();
+            $this->applyCheckIgnores($context);
         }
 
         table($this->checking() ? ['File', 'Drift'] : ['File', 'Result'], $this->results);
@@ -148,15 +144,14 @@ final class InitCommand extends Command
     }
 
     /**
-     * One feature at a time, one artifact at a time, each applied before the next is asked for.
-     * The laziness is load-bearing rather than an optimisation: workbench:devtool creates
-     * workbench/app, and PhpstanFeature only reads that directory when its artifact is yielded, so
-     * materialising a feature's artifacts up front would drop `- workbench/app` from
-     * phpstan.neon.dist on the very run that created it. BoostFeature reads boost.json the same way.
+     * One artifact at a time, each applied before the next is asked for. The laziness is
+     * load-bearing: workbench:devtool creates workbench/app and PhpstanFeature reads that directory
+     * as its artifact is yielded, so materialising artifacts up front would drop `- workbench/app`
+     * from phpstan.neon.dist on the very run that created it. BoostFeature reads boost.json alike.
      */
-    private function scaffold(Context $context, string $level): void
+    private function scaffold(Context $context): void
     {
-        foreach ($this->features($level) as $feature) {
+        foreach ($this->features() as $feature) {
             $flag = $feature->flag();
 
             if ($flag !== null && ! $context->enabled($flag->name)) {
@@ -167,8 +162,8 @@ final class InitCommand extends Command
                 $results = $context->checking() ? $artifact->drift($context) : $artifact->apply($context);
 
                 foreach ($results as $result) {
-                    // A subprocess that was never run has nothing to report: the row would be noise
-                    // in the drift table and a false positive in the exit code.
+                    // A subprocess that was never run has nothing to report: the row would be
+                    // noise in the drift table and a false positive in the exit code.
                     if ($result->status === Status::NotCheckable) {
                         continue;
                     }
@@ -181,22 +176,22 @@ final class InitCommand extends Command
 
     /**
      * The order is the table: it is what every expectsPromptsTable assertion pins, and why
-     * `.gitignore` is its own feature — `ci.yml` sits between `.gitattributes` and it.
+     * `ci.yml` sits between `.gitattributes` and `.gitignore`.
      *
      * @return array<int, Feature>
      */
-    private function features(string $level = '6'): array
+    private function features(): array
     {
         return [
-            new EntrypointFeature,
-            new GitFeature,
-            new CiFeature,
-            new GitignoreFeature,
+            new StaticFeature(null, new ArtisanShim),
+            new StaticFeature(null, new StubFile('.gitattributes', 'gitattributes.stub', onlyIfMissing: true)),
+            new StaticFeature(null, new StubFile('.github/workflows/ci.yml', 'ci.yml.stub', onlyIfMissing: true)),
+            new StaticFeature(null, GitignoreEntries::defaults()),
             new PestFeature,
             new WorkbenchFeature,
             new BrowserFeature,
             new PlaywrightFeature,
-            new PhpstanFeature($level),
+            new PhpstanFeature,
             new RectorFeature,
             new PintFeature,
             new ComposerScriptsFeature,
@@ -205,11 +200,7 @@ final class InitCommand extends Command
     }
 
     /**
-     * Memoized so __construct(), the enabled-flags loop and hasSectionFlag() all read the exact
-     * same list instead of each rebuilding it (three or four times, previously): a Feature's flag
-     * never depends on the phpstan level (only PhpstanFeature's artifacts do), so resolving this
-     * once, from features() at its default level, can never diverge from what scaffold() later
-     * runs at the resolved level.
+     * Memoized so __construct(), the enabled-flags loop and hasSectionFlag() read one list.
      *
      * @return array<int, Flag>
      */
@@ -221,10 +212,6 @@ final class InitCommand extends Command
         )));
     }
 
-    /**
-     * Whether this run only reports drift. Every mutation is gated on it: no writes, no
-     * `composer require`, no composer.json edits, and none of the subprocesses.
-     */
     private function checking(): bool
     {
         return $this->option('check') === true;
@@ -241,7 +228,7 @@ final class InitCommand extends Command
         }
 
         // --check answers for itself: a drift report that stopped to ask six questions would be
-        // useless to the CI job and the agent it exists for. Section flags still narrow it.
+        // useless to the CI job it exists for. Section flags still narrow it.
         if ($this->option('defaults') === true || $this->checking()) {
             return $default;
         }
@@ -276,12 +263,11 @@ final class InitCommand extends Command
     }
 
     /**
-     * Whether a prompt will actually reach a user. `$this->input->isInteractive()` alone is not
-     * enough: Symfony only flips it false when `--no-interaction` is passed explicitly, so a truly
-     * headless caller (a shell script, CI, an agent) that omits the flag would otherwise sail past
-     * here and every confirm()/select() would silently fall back to its default. Mirrors the real
-     * check Laravel's own ConfiguresPrompts::configurePrompts() uses, minus its runningUnitTests()
-     * fallback — keeping that would make this always true in the test suite and defeat the guard.
+     * Whether a prompt will actually reach a user. isInteractive() alone is not enough: Symfony
+     * only flips it false when `--no-interaction` is passed explicitly, so a headless caller that
+     * omits the flag would sail past and every confirm() would silently take its default. Mirrors
+     * ConfiguresPrompts::configurePrompts(), minus its runningUnitTests() fallback — keeping that
+     * would make this always true in the test suite and defeat the guard.
      */
     private function canPrompt(): bool
     {
@@ -293,16 +279,15 @@ final class InitCommand extends Command
     }
 
     /**
-     * A drift report that cannot be silenced is unusable as a CI gate: a package legitimately has no
-     * tests/Unit, or a stricter phpunit.xml.dist, and the only route to green would be degrading
-     * both. Rows named in composer.json's extra.extended-testbench.check-ignore stay visible but
-     * stop counting, so the exit code tracks unintended drift only.
+     * A drift report that cannot be silenced is unusable as a CI gate: a package legitimately has
+     * no tests/Unit, or a stricter phpunit.xml.dist. Rows named in composer.json's
+     * extra.extended-testbench.check-ignore stay visible but stop counting toward the exit code.
      */
-    private function applyCheckIgnores(): void
+    private function applyCheckIgnores(Context $context): void
     {
         $ignored = array_map(
             static fn (mixed $entry): string => (string) $entry,
-            array_values((array) ($this->composerJson()['extra']['extended-testbench']['check-ignore'] ?? [])),
+            array_values((array) ($context->composerJson()['extra']['extended-testbench']['check-ignore'] ?? [])),
         );
 
         if ($ignored === []) {
@@ -338,11 +323,5 @@ final class InitCommand extends Command
         note('Run package:init without --check to scaffold what is missing, adding --force to replace the generated configs that differ.');
 
         return self::FAILURE;
-    }
-
-    /** @return array<string, mixed> */
-    private function composerJson(): array
-    {
-        return (array) json_decode((string) file_get_contents($this->root.'/composer.json'), true);
     }
 }
