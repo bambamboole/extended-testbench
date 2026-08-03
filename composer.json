@@ -58,7 +58,7 @@
             "@php vendor/bin/testbench package:purge-skeleton --ansi",
             "@php vendor/bin/testbench package:discover --ansi"
         ],
-        "boost:refresh": "[ -n \"$CI\" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || vendor/bin/testbench boost:update --no-interaction || true",
+        "boost:refresh": "[ -n \"$CI\" ] || [ ! -f vendor/bin/testbench ] || [ ! -f boost.json ] || { [ -f package.json ] && [ ! -d node_modules ]; } || vendor/bin/testbench boost:update --no-interaction || true",
         "post-install-cmd": [
             "@boost:refresh"
         ],

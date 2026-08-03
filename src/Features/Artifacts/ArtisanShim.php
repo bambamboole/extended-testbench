@@ -14,6 +14,9 @@ use Bambamboole\ExtendedTestbench\Features\Status;
  * link that still resolves, and that is the common case: the widespread
  * `ln -s vendor/bin/testbench artisan` recipe works locally but breaks on a fresh clone and on
  * Windows. A link pointing anywhere else is the user's own and only gets a warning.
+ *
+ * The shim ships a shebang, so it also has to be executable: StubFile writes 0644, which makes
+ * `./artisan` fail while `php artisan` works — drift a plain content compare cannot see.
  */
 final readonly class ArtisanShim implements Artifact
 {
@@ -40,6 +43,10 @@ final readonly class ArtisanShim implements Artifact
 
         $this->warnIfStillSymlinked($context);
 
+        if ($this->notExecutable($context)) {
+            return [new Result($this->label(), Status::Differs, 'differs (not executable, chmod +x artisan)')];
+        }
+
         return $results;
     }
 
@@ -55,7 +62,20 @@ final readonly class ArtisanShim implements Artifact
 
         $this->warnIfStillSymlinked($context);
 
+        if ($this->notExecutable($context) && @chmod($context->path('artisan'), 0755)
+            && $results !== [] && $results[0]->status === Status::Skipped) {
+            return [new Result($this->label(), Status::Overwritten, 'made executable')];
+        }
+
         return $results;
+    }
+
+    /** Foreign symlinks are left alone here too, matching warnIfStillSymlinked()'s policy. */
+    private function notExecutable(Context $context): bool
+    {
+        $path = $context->path('artisan');
+
+        return ! is_link($path) && is_file($path) && ! is_executable($path);
     }
 
     private function symlinkedToTestbench(Context $context): bool

@@ -9,7 +9,7 @@ it('labels itself artisan', function () {
     expect(new ArtisanShim()->label())->toBe('artisan');
 });
 
-it('reports a missing artisan as missing and writes it on apply', function () {
+it('reports a missing artisan as missing and writes it executable on apply', function () {
     $context = makeContext();
     $artifact = new ArtisanShim;
 
@@ -19,7 +19,33 @@ it('reports a missing artisan as missing and writes it on apply', function () {
 
     expect($result->status)->toBe(Status::Written)
         ->and(file_get_contents($context->path('artisan')))
-        ->toContain("require __DIR__.'/vendor/bin/testbench';");
+        ->toContain("require __DIR__.'/vendor/bin/testbench';")
+        ->and(is_executable($context->path('artisan')))->toBeTrue()
+        ->and(first($artifact->drift($context))->status)->toBe(Status::Ok);
+});
+
+it('reports an existing non-executable artisan as differs under drift', function () {
+    $context = makeContext();
+    file_put_contents($context->path('artisan'), "#!/usr/bin/env php\n<?php // mine\n");
+    chmod($context->path('artisan'), 0644);
+
+    $result = first(new ArtisanShim()->drift($context));
+
+    expect($result->status)->toBe(Status::Differs)
+        ->and($result->describe())->toBe('differs (not executable, chmod +x artisan)');
+});
+
+it('makes an existing non-executable artisan executable on apply, without touching its content', function () {
+    $context = makeContext();
+    file_put_contents($context->path('artisan'), "#!/usr/bin/env php\n<?php // mine\n");
+    chmod($context->path('artisan'), 0644);
+
+    $result = first(new ArtisanShim()->apply($context));
+
+    expect($result->status)->toBe(Status::Overwritten)
+        ->and($result->describe())->toBe('made executable')
+        ->and(is_executable($context->path('artisan')))->toBeTrue()
+        ->and(file_get_contents($context->path('artisan')))->toBe("#!/usr/bin/env php\n<?php // mine\n");
 });
 
 it('reports a symlink to the testbench binary as differs, with no other row, under drift', function () {

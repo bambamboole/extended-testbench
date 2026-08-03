@@ -35,7 +35,10 @@ afterEach(function () {
     @unlink($this->root.'/artisan');
 
     if ($this->originalArtisan !== null) {
+        // file_put_contents() recreates the file 0644, which would strip the committed executable
+        // bit and trip the package:init --check drift gate that runs after the suite in CI.
         file_put_contents($this->root.'/artisan', $this->originalArtisan);
+        chmod($this->root.'/artisan', 0755);
     }
 
     if ($this->originalBoostJson !== null) {
@@ -64,6 +67,7 @@ test('boost:update writes guidelines to the package root, never the skeleton', f
         ->and(file_get_contents($this->root.'/CLAUDE.md'))->toContain('=== foundation rules ===')
         ->and($this->root.'/artisan')->toBeFile()
         ->and(is_link($this->root.'/artisan'))->toBeFalse()
+        ->and(is_executable($this->root.'/artisan'))->toBeTrue()
         ->and(file_get_contents($this->root.'/artisan'))->toContain("require __DIR__.'/vendor/bin/testbench';")
         ->and(file_exists($this->skeleton.'/CLAUDE.md'))->toBeFalse()
         ->and(file_exists($this->skeleton.'/boost.json'))->toBeFalse();

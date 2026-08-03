@@ -87,6 +87,10 @@ class ExtendedTestbenchServiceProvider extends ServiceProvider
 
         if (@file_put_contents($artisan, $stub) === false) {
             fwrite(STDERR, "extended-testbench: could not write {$artisan}; create it manually with: require __DIR__.'/vendor/bin/testbench';".PHP_EOL);
+
+            return;
         }
+
+        @chmod($artisan, 0755);
     }
 }
