@@ -1202,8 +1202,9 @@ it('scaffolds a CI workflow with a php matrix, the check script and the drift ga
         ->assertSuccessful();
 
     expect(file_get_contents($this->root.'/.github/workflows/ci.yml'))
-        ->toContain('composer check')
+        ->toContain('composer ${{ matrix.dependencies == \'lowest\' && \'test\' || \'check\' }}')
         ->toContain("php: ['8.4', '8.5']")
+        ->toContain('dependencies: [highest, lowest]')
         ->toContain('php vendor/bin/testbench package:init --check');
 });
 
