@@ -32,6 +32,12 @@ final readonly class WorkbenchApp implements Artifact
     /** @return array<int, Result> */
     public function apply(Context $context): iterable
     {
+        // Same signal drift() reports ok on. Rerunning workbench:devtool over an existing app
+        // generates factories, seeders, routes and autoload entries the package never asked for.
+        if ($context->hasWorkbench()) {
+            return [new Result($this->label(), Status::Skipped, 'skipped (exists)')];
+        }
+
         if (! is_file($context->path('vendor/bin/testbench'))) {
             $context->note('Run vendor/bin/testbench workbench:devtool to finish the workbench setup.');
 

@@ -19,6 +19,23 @@ it('reports drift by whether workbench/app exists, regardless of vendor/bin/test
     expect(first(new WorkbenchApp()->drift($context))->status)->toBe(Status::Ok);
 });
 
+it('skips workbench:devtool entirely when workbench/app already exists', function () {
+    $context = makeContext();
+    mkdir($context->path('workbench/app'), 0755, true);
+    mkdir($context->path('vendor/bin'), 0755, true);
+    file_put_contents(
+        $context->path('vendor/bin/testbench'),
+        "<?php file_put_contents(__DIR__.'/../../devtool-ran.marker', '1');\n",
+    );
+
+    $result = first(new WorkbenchApp()->apply($context));
+
+    expect($result->label)->toBe('workbench/app')
+        ->and($result->status)->toBe(Status::Skipped)
+        ->and($result->describe())->toBe('skipped (exists)')
+        ->and(file_exists($context->path('devtool-ran.marker')))->toBeFalse();
+});
+
 it('skips workbench:devtool and notes the manual command when vendor/bin/testbench is missing', function () {
     $context = makeContext();
 
