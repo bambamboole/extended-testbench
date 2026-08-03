@@ -39,10 +39,8 @@ it('yields Failed when the command exits unsuccessfully', function () {
 });
 
 it('runs the given command array verbatim, without assuming any prefix', function () {
-    // Proves the "caller decides the full command" contract from the brief: a genuinely non-PHP
-    // argv (not PHP_BINARY-prefixed) still runs untouched — ProcessStep never prepends PHP_BINARY
-    // or vendor/bin/testbench itself. Using a PHP_BINARY-based command here would pass even if
-    // ProcessStep secretly prepended PHP_BINARY, which proves nothing.
+    // A genuinely non-PHP argv: a PHP_BINARY-based command would pass even if ProcessStep
+    // secretly prepended PHP_BINARY, which proves nothing.
     $context = makeContext();
     $result = first(new ProcessStep('npx playwright install', ['/bin/echo', 'npx playwright install'])->apply($context));
 

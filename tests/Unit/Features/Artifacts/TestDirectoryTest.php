@@ -43,8 +43,3 @@ it('reports skipped labelled by the directory path when the gitkeep already exis
         ->and($result->status)->toBe(Status::Skipped)
         ->and($result->describe())->toBe('skipped (exists)');
 });
-
-// The two Failed branches (mkdir() failing, then file_put_contents() failing on the .gitkeep) are
-// not exercised here: simulating a real filesystem failure warns noisily and unreliably across
-// platforms. Same gap, same reasoning as StubFile's Failed paths (Task 3 ledger); both close when
-// Task 11 wires this into the Feature-covered command.

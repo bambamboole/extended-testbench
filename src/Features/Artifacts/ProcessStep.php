@@ -11,18 +11,12 @@ use Bambamboole\ExtendedTestbench\Features\Status;
 use Symfony\Component\Process\Process;
 
 /**
- * A single subprocess run during apply — workbench:devtool, npx playwright install, boost:install/
- * boost:update --discover, boost:update (compose). $command and $ttyCommand are FULL argv arrays the
- * caller wants run: ProcessStep does not assume a testbench prefix, since playwright's
- * `['npx', 'playwright', 'install']` has none while the testbench commands need
- * `[PHP_BINARY, 'vendor/bin/testbench', ...]` prepended by the caller. This keeps ProcessStep itself
- * a plain, reusable "run this and report" primitive.
+ * A single subprocess run during apply. $command and $ttyCommand are FULL argv arrays: no testbench
+ * prefix is assumed, since playwright's `['npx', 'playwright', 'install']` has none while the
+ * testbench commands need `[PHP_BINARY, 'vendor/bin/testbench', ...]` prepended by the caller.
  *
- * boost()'s original TTY branch varies the argv itself, not just the output callback: a TTY run
- * drops `--no-interaction` (so Boost's interactive wizard still works on a real terminal) while the
- * non-TTY run keeps it (so a headless run — `timeout: null` means no other way out — never blocks on
- * a prompt nobody can answer). $ttyCommand carries that variant; when it is null, or no TTY is
- * available, $command runs unconditionally with the streaming callback, same as every other caller.
+ * $ttyCommand exists because a TTY run may need different argv, not just a different output sink —
+ * see BoostRun, which drops --no-interaction there.
  */
 final readonly class ProcessStep implements Artifact
 {
@@ -44,9 +38,8 @@ final readonly class ProcessStep implements Artifact
     }
 
     /**
-     * A subprocess's outcome can only be known by running it, so --check never runs one and reports
-     * NotCheckable instead — this is what every caller's `if ($this->checking()) { return; }` guard
-     * did today.
+     * A subprocess's outcome can only be known by running it, so --check never runs one and
+     * reports NotCheckable instead, which the runner omits from the drift table.
      *
      * @return iterable<Result>
      */

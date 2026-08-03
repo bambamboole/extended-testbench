@@ -86,9 +86,7 @@ it('warns and rewrites the row when a legacy file shadows the generated one, reg
 
     $skipped = new StubFile('pint.json', 'pint.json.stub', onlyIfMissing: true, shadowedBy: 'phpunit.xml');
 
-    // shadowedBy only matters relative to its own path, and onlyIfMissing files never get their
-    // detail rewritten even when some other shadow exists — proves the rewrite is gated on
-    // Written/Overwritten, not merely "a shadow exists".
+    // Proves the rewrite is gated on Written/Overwritten, not merely "a shadow exists".
     $skippedResult = first($skipped->apply($onlyIfMissing));
 
     expect($skippedResult->status)->toBe(Status::Skipped)

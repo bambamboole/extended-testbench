@@ -11,10 +11,7 @@ use Bambamboole\ExtendedTestbench\Features\Status;
 use Symfony\Component\Process\Process;
 use Throwable;
 
-/**
- * A single generated file: an entrypoint, a config, or a hand-written scaffold like TestCase.php.
- * Covers all twelve of InitCommand's scaffolded files by varying its constructor arguments.
- */
+/** A single generated file: an entrypoint, a config, or a scaffold like TestCase.php. */
 final readonly class StubFile implements Artifact
 {
     /** @param  array<string, string>  $replacements */
@@ -123,11 +120,9 @@ final readonly class StubFile implements Artifact
 
     /**
      * Warns when a legacy config next to a generated `.dist` file shadows it — both PHPUnit and
-     * PHPStan prefer the non-`.dist` name, so the scaffold would be silently ignored. Policy is
-     * warn only: no rename, no prompt. The warning fires regardless of the write outcome, but the
-     * result row is only rewritten in place (never a second row) and only when the write actually
-     * succeeded — a failed or skipped write keeps its true row, so the summary never claims a file
-     * was written when it was not.
+     * PHPStan prefer the non-`.dist` name, so the scaffold would be silently ignored. Warn only:
+     * no rename, no prompt. The row is rewritten only on a successful write, so a failed or
+     * skipped one keeps its true status rather than claiming the file was written.
      */
     private function result(Context $context, Status $status, ?string $detail = null): Result
     {

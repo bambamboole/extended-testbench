@@ -9,9 +9,7 @@ use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Result;
 use Bambamboole\ExtendedTestbench\Features\Status;
 
-/**
- * A single composer.json scripts entry.
- */
+/** A single composer.json scripts entry. */
 final readonly class Script implements Artifact
 {
     /** @param  string|array<int, string>  $command */
@@ -64,10 +62,9 @@ final readonly class Script implements Artifact
     }
 
     /**
-     * script() only ever matched on the name, so a package that already runs the same tool under its
-     * own name (`analyse` for our `stan`, `lint:fix` for our `lint`) silently ended up with both,
-     * and a `check` wired to whichever one we scaffolded. We still add ours — renaming someone's
-     * scripts and the CI that calls them is not ours to do — but the collision gets said out loud.
+     * Scripts are matched by name, so a package already running the same tool under its own name
+     * (`analyse` for our `stan`) ends up with both. We still add ours — renaming someone's scripts
+     * and the CI that calls them is not ours to do — but the collision gets said out loud.
      *
      * @param  array<string, mixed>  $scripts
      */
@@ -77,9 +74,8 @@ final readonly class Script implements Artifact
             return;
         }
 
-        // Compare basenames: a package running `./vendor/bin/phpstan` is running the same tool as our
-        // bare `phpstan`, and a raw first-token comparison saw two different strings and stayed
-        // quiet. `@php vendor/bin/x` hides the tool behind the runner, so that prefix is dropped.
+        // Compare basenames: `./vendor/bin/phpstan` is the same tool as our bare `phpstan`, which a
+        // raw first-token comparison misses. `@php vendor/bin/x` hides the tool behind the runner.
         $tool = static function (mixed $value): string {
             $first = is_array($value) ? (string) ($value[0] ?? '') : (string) $value;
             $tokens = array_values(array_filter(explode(' ', trim($first)), static fn (string $token): bool => $token !== ''));
