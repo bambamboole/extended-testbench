@@ -1448,3 +1448,64 @@ it('baselines an intentional divergence through the check-ignore list', function
         ->expectsOutputToContain('No drift')
         ->assertSuccessful();
 });
+
+it('warns about a check-ignore entry that matches no row at all', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['extra']['extended-testbench']['check-ignore'] = ['nonexistent-artifact-label'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    // Warns without failing: a stale entry rots the baseline but is not itself drift.
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain("check-ignore entry 'nonexistent-artifact-label' matched no row.")
+        ->expectsOutputToContain('No drift')
+        ->assertSuccessful();
+});
+
+it('warns about a check-ignore entry whose row is already ok', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['extra']['extended-testbench']['check-ignore'] = ['pint.json'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->expectsOutputToContain("check-ignore entry 'pint.json' matched only rows that are already ok.")
+        ->expectsOutputToContain('No drift')
+        ->assertSuccessful();
+});
+
+it('does not warn about a check-ignore entry that is doing its job', function () {
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--no-interaction' => true, '--defaults' => true])
+        ->assertSuccessful();
+
+    completeScaffold($this->root);
+    (new Filesystem)->deleteDirectory($this->root.'/tests/Unit');
+
+    $composer = json_decode((string) file_get_contents($this->root.'/composer.json'), true);
+    $composer['extra']['extended-testbench']['check-ignore'] = ['tests/Unit'];
+    file_put_contents($this->root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    bindInit($this->root);
+
+    $this->artisan('package:init', ['--check' => true])
+        ->doesntExpectOutputToContain('check-ignore entry')
+        ->assertSuccessful();
+});
