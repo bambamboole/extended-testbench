@@ -44,9 +44,11 @@ in its MCP config, its tool subprocesses, and its guideline text.
 vendor/bin/testbench package:init
 ```
 
-Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint, `.gitattributes`
+Installs Pest 5 with `pest-plugin-laravel` and writes the `artisan` entrypoint (executable, it
+ships a shebang), `.gitattributes`
 (development-only files marked `export-ignore` so they don't ship in the dist archive),
-`.github/workflows/ci.yml` (PHP 8.4 running the generated `check` script),
+`.github/workflows/ci.yml` (a PHP 8.4/8.5 matrix running the generated `check` script, then
+`package:init --check` as a drift gate),
 `phpunit.xml.dist` (sqlite `:memory:`, plus the Testbench skeleton's `APP_KEY` — the skeleton keeps
 that key in a `.env` that the `package:purge-skeleton` hook deletes on every autoload dump, so
 pinning it here is what keeps a cold suite from throwing `MissingAppKeyException`),
@@ -131,7 +133,10 @@ tools you accepted, ending in `@test`, for CI and git hooks. It also wires the T
 `post-autoload-dump` hooks (`package:purge-skeleton`, `package:discover`) and a `boost:refresh`
 script into `post-install-cmd` / `post-update-cmd`; `boost:refresh` reruns
 `boost:update --no-interaction` on every local install or update, but no-ops in CI, before
-`vendor/bin/testbench` exists, or before Boost has been set up (`boost.json` present), and never
+`vendor/bin/testbench` exists, before Boost has been set up (`boost.json` present), or while a
+`package.json` sits next to a missing `node_modules` — Boost discovers frontend packages (Inertia,
+Echo) through the installed tree, so refreshing before `npm install` would silently drop their
+skills from `boost.json`. Run `npm install` first, or rerun `composer install` after it. It never
 fails the surrounding `composer install`/`update` even if that rerun does.
 
 Existing files are never replaced without asking or `--force`, and the overwrite prompt shows a
@@ -211,12 +216,13 @@ skeleton's storage/config/database/bootstrap/lang/public paths first. Your test 
   are missing, add `APP_ENV=local` to the `env` section of your `testbench.yaml`.
 - Database-backed MCP tools run against the Testbench skeleton app — configure connections
   via your workbench setup as usual.
-- The `artisan` entrypoint is a plain PHP file, not a symlink, so it needs no special handling on
-  Windows and survives a fresh clone once committed.
-- Windows: on a checkout without `core.symlinks` enabled, the tracked `.ai/guidelines/core.blade.php`
-  becomes a small text file containing its target path instead of a symlink, and `vendor/bin/pest`
-  fails loudly on it. Enable symlinks (`git config core.symlinks true` and re-clone) or recreate the
-  symlink by hand.
+- The `artisan` entrypoint is a plain PHP file, not a symlink, and `package:init` marks it
+  executable (`0755`) — a shebang without the executable bit means `./artisan` fails while
+  `php artisan` works, and `--check` reports exactly that as drift.
+- Windows is not supported. Development happens on POSIX systems: the drift diff shells out to
+  `diff`, permissions are checked with POSIX semantics, and this repository tracks a symlink
+  (`.ai/guidelines/core.blade.php`) that a checkout without `core.symlinks` turns into a plain
+  text file `vendor/bin/pest` fails loudly on. Use WSL.
 - `orchestra/testbench ^11` is a hard requirement, not just what the suite is tested against: it sits
   in `require` so installing this package is all you need. That means PHP 8.4+ and Laravel 13 — and
   it applies to the whole dev environment, not just this bridge. A package that still supports
