@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bambamboole\ExtendedTestbench\Features;
 
+use Bambamboole\ExtendedTestbench\Features\Artifacts\AllowedPlugin;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\AutoloadEntry;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\NeedsPackage;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\PhpunitConfig;
@@ -33,6 +34,8 @@ final readonly class PestFeature implements Feature
     /** @return iterable<Artifact> */
     public function artifacts(Context $context): iterable
     {
+        yield new AllowedPlugin('pestphp/pest-plugin');
+
         yield new NeedsPackage('pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0');
 
         yield new TestDirectory('tests/Unit');
@@ -52,7 +55,9 @@ final readonly class PestFeature implements Feature
         ], onlyIfMissing: true);
 
         yield new StubFile('tests/Pest.php', 'Pest.php.stub', [
-            'test_case' => '\\'.$context->testNamespace().'TestCase',
+            // Imported, not inlined as \FQCN: pint's fully_qualified_strict_types flags the
+            // backslash form, so the old stub failed the scaffolded `composer check` on run one.
+            'test_case' => $context->testNamespace().'TestCase',
             'suites' => "'Feature', 'Unit'",
         ], onlyIfMissing: true);
 

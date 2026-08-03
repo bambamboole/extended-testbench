@@ -2,4 +2,6 @@
 
 declare(strict_types=1);
 
-uses({{ test_case }}::class)->in({{ suites }});
+use {{ test_case }};
+
+uses(TestCase::class)->in({{ suites }});

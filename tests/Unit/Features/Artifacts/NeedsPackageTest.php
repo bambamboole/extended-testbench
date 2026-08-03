@@ -13,6 +13,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 it('yields nothing for a constraint already satisfied', function () {
     $context = makeContext(['require-dev' => ['pestphp/pest' => '^5.0']], installs: true);
+    mkdir($context->path('vendor/pestphp/pest'), 0755, true);
     $artifact = new NeedsPackage('pestphp/pest:^5.0');
 
     expect(iterator_to_array($artifact->drift($context)))->toBe([])
@@ -32,6 +33,19 @@ it('reports every missing constraint as missing, labelled by the constraint itse
         ->and($results[1]->status)->toBe(Status::Missing);
 });
 
+it('treats a constraint a failed install left in composer.json as still missing', function () {
+    // `composer require` can write the constraint and then die (an unallowed plugin, a network
+    // failure): composer.json claims the package while vendor/ holds nothing. Trusting the entry
+    // made that state unrecoverable — reruns retried nothing and --check reported no drift.
+    $context = makeContext(['require-dev' => ['pestphp/pest' => '^5.0']], installs: true);
+    $artifact = new NeedsPackage('pestphp/pest:^5.0');
+
+    $results = iterator_to_array($artifact->drift($context));
+
+    expect($results)->toHaveCount(1)
+        ->and($results[0]->status)->toBe(Status::Missing);
+});
+
 it('labels itself by the first constraint', function () {
     expect(new NeedsPackage('pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0')->label())
         ->toBe('pestphp/pest:^5.0');
@@ -39,6 +53,7 @@ it('labels itself by the first constraint', function () {
 
 it('mixes satisfied and missing constraints, yielding a row only for the missing one', function () {
     $context = makeContext(['require-dev' => ['pestphp/pest' => '^5.0']], installs: true);
+    mkdir($context->path('vendor/pestphp/pest'), 0755, true);
     $artifact = new NeedsPackage('pestphp/pest:^5.0', 'pestphp/pest-plugin-laravel:^5.0');
 
     $results = iterator_to_array($artifact->drift($context));

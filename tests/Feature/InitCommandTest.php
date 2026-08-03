@@ -59,7 +59,11 @@ function completeScaffold(string $root): void
         'laravel/pint',
     ] as $package) {
         $composer['require-dev'][$package] = '*';
+        // NeedsPackage trusts composer.json only when vendor/ actually holds the package.
+        mkdir($root.'/vendor/'.$package, 0755, true);
     }
+
+    $composer['config']['allow-plugins']['pestphp/pest-plugin'] = true;
 
     file_put_contents($root.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     file_put_contents($root.'/boost.json', json_encode([
@@ -106,7 +110,8 @@ it('scaffolds the pest baseline when everything else is declined', function () {
         ->toContain('\Acme\Demo\DemoServiceProvider::class');
 
     expect(file_get_contents($this->root.'/tests/Pest.php'))
-        ->toContain("->in('Feature', 'Unit');");
+        ->toContain('use Tests\TestCase;')
+        ->toContain("uses(TestCase::class)->in('Feature', 'Unit');");
 
     expect(file_get_contents($this->root.'/testbench.yaml'))
         ->toContain("laravel: '@testbench'")
@@ -198,6 +203,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['tests/Unit', 'skipped (exists)'],
             ['tests/Feature', 'skipped (exists)'],
             ['phpunit.xml.dist', 'written'],
@@ -235,6 +241,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['tests/Unit', 'failed'],
             ['tests/Feature', 'failed'],
             ['phpunit.xml.dist', 'written'],
@@ -327,6 +334,7 @@ it('reports failure and records it in the summary when a composer install fails'
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['pestphp/pest:^5.0', 'failed'],
             ['pestphp/pest-plugin-laravel:^5.0', 'failed'],
             ['tests/Unit/.gitkeep', 'written'],
@@ -1166,6 +1174,7 @@ it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy
             ['.gitattributes', 'written'],
             ['.github/workflows/ci.yml', 'written'],
             ['.gitignore', 'written'],
+            ['composer allow-plugins: pestphp/pest-plugin', 'allowed'],
             ['tests/Unit/.gitkeep', 'written'],
             ['tests/Feature/.gitkeep', 'written'],
             ['phpunit.xml.dist', 'failed'],

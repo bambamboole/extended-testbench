@@ -60,9 +60,14 @@ final readonly class NeedsPackage implements Artifact
     /** @return array<int, string> */
     private function missing(Context $context): array
     {
-        return array_values(array_filter(
-            $this->constraints,
-            fn (string $constraint): bool => ! $context->composer()->hasPackage(explode(':', $constraint)[0]),
-        ));
+        return array_values(array_filter($this->constraints, function (string $constraint) use ($context): bool {
+            $package = explode(':', $constraint)[0];
+
+            // The composer.json entry alone is not enough: a failed `composer require` can leave
+            // the constraint behind with nothing in vendor/, and trusting it made the failure
+            // unrecoverable — reruns retried nothing and --check certified the wreck.
+            return ! $context->composer()->hasPackage($package)
+                || ! is_dir($context->path('vendor/'.$package));
+        }));
     }
 }

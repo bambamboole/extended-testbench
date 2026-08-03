@@ -41,6 +41,7 @@ it('declares artifacts in row order', function () {
     // AutoloadEntry sits right before tests/TestCase.php, whose replacements are the first to
     // call testNamespace() — that call is what registers the entry when it is missing.
     expect($labels)->toBe([
+        'composer allow-plugins: pestphp/pest-plugin',
         'pestphp/pest:^5.0',
         'tests/Unit',
         'tests/Feature',
