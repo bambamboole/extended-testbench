@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bambamboole\ExtendedTestbench\Features\Artifacts;
 
 use Bambamboole\ExtendedTestbench\Features\Artifact;
+use Bambamboole\ExtendedTestbench\Features\BoostJson;
 use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Result;
 use Bambamboole\ExtendedTestbench\Features\Status;
@@ -46,14 +47,7 @@ final readonly class BoostRegistration implements Artifact
         yield new Result('boost.json: packages', $this->registered($config) ? Status::Ok : Status::Missing);
     }
 
-    /**
-     * Yields nothing when boost.json is missing (nothing to register yet) or already registered —
-     * the original returned false without pushing a row in both cases. The `Written` vs no-yield
-     * split is what lets a later feature decide whether the guidelines need composing again: only a
-     * newly-added registration returns true from the original registerGuideline().
-     *
-     * @return iterable<Result>
-     */
+    /** @return iterable<Result> */
     public function apply(Context $context): iterable
     {
         $path = $context->path('boost.json');
@@ -74,7 +68,7 @@ final readonly class BoostRegistration implements Artifact
             return;
         }
 
-        $config['packages'] = [...$this->packages($config), $this->package];
+        $config['packages'] = [...BoostJson::packages($config), $this->package];
 
         ksort($config);
 
@@ -90,15 +84,6 @@ final readonly class BoostRegistration implements Artifact
     /** @param  array<string, mixed>  $config */
     private function registered(array $config): bool
     {
-        return in_array($this->package, $this->packages($config), true);
-    }
-
-    /**
-     * @param  array<string, mixed>  $config
-     * @return array<int, mixed>
-     */
-    private function packages(array $config): array
-    {
-        return is_array($config['packages'] ?? null) ? $config['packages'] : [];
+        return in_array($this->package, BoostJson::packages($config), true);
     }
 }

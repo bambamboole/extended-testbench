@@ -5,13 +5,7 @@ declare(strict_types=1);
 use Bambamboole\ExtendedTestbench\Features\Artifacts\PestSuiteLine;
 use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Status;
-use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Output\BufferedOutput;
-use Symfony\Component\Console\Output\ConsoleOutput;
-
-afterEach(function () {
-    Prompt::setOutput(new ConsoleOutput);
-});
 
 function writePestFile(Context $context, string $contents): void
 {
@@ -87,7 +81,6 @@ it('yields nothing when the suite is already mapped to the dedicated test case',
 
 it('warns instead of silently keeping a mapping to the base TestCase, yielding nothing', function () {
     $context = makeContext();
-    Prompt::setOutput($context->output());
     writePestFile($context, "<?php\n\ndeclare(strict_types=1);\n\nuses(\\Tests\\TestCase::class)->in('Feature', 'Unit', 'Browser');\n");
 
     $results = iterator_to_array(new PestSuiteLine('Browser', 'Tests\\BrowserTestCase')->apply($context), false);

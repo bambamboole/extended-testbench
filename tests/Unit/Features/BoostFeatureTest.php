@@ -2,24 +2,14 @@
 
 declare(strict_types=1);
 
-use Bambamboole\ExtendedTestbench\Features\Artifact;
 use Bambamboole\ExtendedTestbench\Features\BoostFeature;
-
-/**
- * @param  iterable<Artifact>  $artifacts
- * @return array<int, string>
- */
-function boostFeatureLabels(iterable $artifacts): array
-{
-    return array_map(fn (Artifact $artifact): string => $artifact->label(), iterator_to_array($artifacts, false));
-}
 
 it('is always on', function () {
     expect((new BoostFeature)->flag())->toBeNull();
 });
 
 it('declares boost:install, boost.json and boost:update in order when boost.json does not exist yet', function () {
-    expect(boostFeatureLabels((new BoostFeature)->artifacts(makeContext())))->toBe([
+    expect(labels((new BoostFeature)->artifacts(makeContext())))->toBe([
         'boost:install',
         'boost.json',
         'boost:update',
@@ -30,7 +20,7 @@ it('declares boost:update --discover as the run label once boost.json already ex
     $context = makeContext();
     file_put_contents($context->path('boost.json'), json_encode(['packages' => []]));
 
-    expect(boostFeatureLabels((new BoostFeature)->artifacts($context)))->toBe([
+    expect(labels((new BoostFeature)->artifacts($context)))->toBe([
         'boost:update --discover',
         'boost.json',
         'boost:update',
@@ -55,9 +45,7 @@ it('runs boost:install, registers the package and composes the guideline end to 
         }
         PHP);
 
-    foreach ((new BoostFeature)->artifacts($context) as $artifact) {
-        iterator_to_array($artifact->apply($context), false);
-    }
+    applyAll((new BoostFeature)->artifacts($context), $context);
 
     $boost = json_decode((string) file_get_contents($context->path('boost.json')), true);
 
@@ -80,9 +68,7 @@ it('does not recompose the guideline when the package was already registered', f
         }
         PHP);
 
-    foreach ((new BoostFeature)->artifacts($context) as $artifact) {
-        iterator_to_array($artifact->apply($context), false);
-    }
+    applyAll((new BoostFeature)->artifacts($context), $context);
 
     expect(file_exists($context->path('compose-ran.marker')))->toBeFalse();
 });

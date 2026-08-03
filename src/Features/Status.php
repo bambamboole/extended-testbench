@@ -31,9 +31,4 @@ enum Status
             self::NotCheckable => 'not checkable',
         };
     }
-
-    public function isDrift(): bool
-    {
-        return in_array($this, [self::Missing, self::Differs, self::Failed], true);
-    }
 }

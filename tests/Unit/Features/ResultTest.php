@@ -16,15 +16,3 @@ it('prefers the detail string so table rows keep their parenthetical', function 
     expect($result->describe())->toBe('skipped (exists, --force to replace)')
         ->and($result->status)->toBe(Status::Skipped);
 });
-
-it('knows which statuses count as drift', function () {
-    expect(Status::Ok->isDrift())->toBeFalse()
-        ->and(Status::NotCheckable->isDrift())->toBeFalse()
-        ->and(Status::Written->isDrift())->toBeFalse()
-        ->and(Status::Overwritten->isDrift())->toBeFalse()
-        ->and(Status::Skipped->isDrift())->toBeFalse()
-        ->and(Status::Ran->isDrift())->toBeFalse()
-        ->and(Status::Missing->isDrift())->toBeTrue()
-        ->and(Status::Differs->isDrift())->toBeTrue()
-        ->and(Status::Failed->isDrift())->toBeTrue();
-});
