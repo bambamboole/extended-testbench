@@ -34,4 +34,4 @@ jobs:
       # developed with, and run on the highest leg.
       - run: composer ${{ matrix.dependencies == 'lowest' && 'test' || 'check' }}
 
-      - run: php vendor/bin/testbench package:init --check
+      - run: php vendor/bin/testbench package:init --check{{ browser_job }}

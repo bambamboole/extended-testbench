@@ -54,15 +54,18 @@ develop with — then `package:init --check` as a drift gate),
 `phpunit.xml.dist` (sqlite `:memory:`, plus the Testbench skeleton's `APP_KEY` — the skeleton keeps
 that key in a `.env` that the `package:purge-skeleton` hook deletes on every autoload dump, so
 pinning it here is what keeps a cold suite from throwing `MissingAppKeyException`),
-`tests/TestCase.php`, `tests/Pest.php` and `testbench.yaml` when they are missing,
-plus the `.gitignore` entries for everything it and Boost generate. Then it asks about:
+`tests/TestCase.php`, `tests/Pest.php`, `tests/ArchTest.php` (an `Arch` suite forbidding debug
+statements and pinning `declare(strict_types=1)` across the package namespace) and `testbench.yaml`
+when they are missing, plus the `.gitignore` entries for everything it and Boost generate. Then it asks about:
 
 - **a workbench app** — adds the `workbench:` block to `testbench.yaml` and hands the namespaces,
   directories and `autoload-dev` entries to Testbench's own `workbench:devtool`
 - **browser tests** — `pest-plugin-browser`, a dummy test, a `tests/BrowserTestCase.php` that fails
   fast when the workbench's Vite build is missing or stale (skipped for packages with no
   `vite.config`), and a `Browser` suite in `tests/Pest.php` mapped to it instead of the base
-  `TestCase`
+  `TestCase`. The generated workflow gets a dedicated `browser` job — one PHP version, Playwright
+  Chromium installed once, `npm ci`/`npm run build` first when the package has a `package.json` —
+  while the matrix jobs run `pest --exclude-testsuite=Browser` and never need a browser
 - **PHPStan** — Larastan + the Pest PHPStan extension, `phpstan.neon.dist` (level `6` unless you pass
   `--phpstan-level`), a `stan` script
 - **Rector** — `rector.php` plus a `refactor` script
