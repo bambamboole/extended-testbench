@@ -321,6 +321,7 @@ final class InitCommand extends Command
         }
 
         note('Run package:init without --check to scaffold what is missing, adding --force to replace the generated configs that differ.');
+        note("Intentional divergence? List the row's File label in composer.json under extra.extended-testbench.check-ignore to baseline it.");
 
         return self::FAILURE;
     }

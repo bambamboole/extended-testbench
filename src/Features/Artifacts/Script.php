@@ -31,7 +31,15 @@ final readonly class Script implements Artifact
         if (isset($scripts[$this->name])) {
             // Existence by name is not enough: a `check` wired to an entirely different
             // pipeline would report ok next to the `stan` it never runs.
-            yield new Result($this->label(), $scripts[$this->name] === $this->command ? Status::Ok : Status::Differs);
+            if ($this->satisfiedBy($scripts[$this->name])) {
+                yield new Result($this->label(), Status::Ok);
+
+                return;
+            }
+
+            $this->printDiff($context, $scripts[$this->name]);
+
+            yield new Result($this->label(), Status::Differs);
 
             return;
         }
@@ -39,6 +47,36 @@ final readonly class Script implements Artifact
         $this->warnAboutRenamedScript($context, $scripts);
 
         yield new Result($this->label(), Status::Missing);
+    }
+
+    /**
+     * An array script that carries extra entries around the scaffold's own — a package prepending
+     * its git-hooks installer to post-install-cmd — still does what the scaffold wired up, so only
+     * a missing scaffold entry counts as drift. String scripts stay an exact match.
+     */
+    private function satisfiedBy(mixed $existing): bool
+    {
+        if ($existing === $this->command) {
+            return true;
+        }
+
+        if (! is_array($this->command) || ! is_array($existing)) {
+            return false;
+        }
+
+        return array_all($this->command, static fn (string $entry): bool => in_array($entry, $existing, true));
+    }
+
+    /** File drift prints a unified diff; a script row saying bare `differs` was undebuggable. */
+    private function printDiff(Context $context, mixed $existing): void
+    {
+        $describe = static fn (mixed $command): string => is_string($command)
+            ? $command
+            : (string) json_encode($command, JSON_UNESCAPED_SLASHES);
+
+        $context->note("composer script '{$this->name}' differs from the scaffold:");
+        $context->output()->writeln('-'.$describe($existing));
+        $context->output()->writeln('+'.$describe($this->command));
     }
 
     /** @return iterable<Result> */
