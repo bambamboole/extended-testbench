@@ -209,6 +209,7 @@ it('reports the test directories as skipped when their .gitkeep already exists',
             ['phpunit.xml.dist', 'written'],
             ['tests/TestCase.php', 'written'],
             ['tests/Pest.php', 'written'],
+            ['tests/ArchTest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -247,6 +248,7 @@ it('records a failed outcome instead of a false "written" when a path is blocked
             ['phpunit.xml.dist', 'written'],
             ['tests/TestCase.php', 'failed'],
             ['tests/Pest.php', 'failed'],
+            ['tests/ArchTest.php', 'failed'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -342,6 +344,7 @@ it('reports failure and records it in the summary when a composer install fails'
             ['phpunit.xml.dist', 'written'],
             ['tests/TestCase.php', 'written'],
             ['tests/Pest.php', 'written'],
+            ['tests/ArchTest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],
@@ -874,7 +877,7 @@ it('keeps the browser suite out of test and check', function () {
 
     $scripts = json_decode((string) file_get_contents($this->root.'/composer.json'), true)['scripts'];
 
-    expect($scripts['test'])->toBe('pest --testsuite=Unit,Feature')
+    expect($scripts['test'])->toBe('pest --exclude-testsuite=Browser')
         ->and($scripts['test:browser'])->toBe('pest --testsuite=Browser')
         ->and($scripts['check'])->toBe(['@test']);
 });
@@ -1180,6 +1183,7 @@ it('keeps a blocked phpunit.xml.dist write reported as failed even when a legacy
             ['phpunit.xml.dist', 'failed'],
             ['tests/TestCase.php', 'written'],
             ['tests/Pest.php', 'written'],
+            ['tests/ArchTest.php', 'written'],
             ['testbench.yaml', 'written'],
             ['composer script: test', 'added'],
             ['composer script: check', 'added'],

@@ -61,6 +61,14 @@ final readonly class PestFeature implements Feature
             'suites' => "'Feature', 'Unit'",
         ], onlyIfMissing: true);
 
+        yield new StubFile('tests/ArchTest.php', 'ArchTest.php.stub', [
+            // A package with no autoload namespace still gets the debug-statement rule.
+            'strict_types_test' => $context->sourceNamespace() === null ? '' : sprintf(
+                "\narch('the package uses strict types throughout')\n    ->expect('%s')\n    ->toUseStrictTypes();\n",
+                $context->sourceNamespace(),
+            ),
+        ], onlyIfMissing: true);
+
         yield new StubFile('testbench.yaml', 'testbench.yaml.stub', [
             'providers' => $context->providers() === [] ? '' : "\nproviders:\n".implode("\n", array_map(
                 static fn (string $provider): string => '  - '.ltrim($provider, '\\'),
@@ -69,6 +77,8 @@ final readonly class PestFeature implements Feature
             'workbench' => $context->enabled('workbench') ? self::WORKBENCH_BLOCK : '',
         ], onlyIfMissing: true);
 
-        yield new Script('test', $context->enabled('browser') ? 'pest --testsuite=Unit,Feature' : 'pest');
+        // Exclusion, not enumeration: --testsuite=Unit,Feature would silently drop the Arch
+        // suite, and the CI matrix jobs rely on this script never touching a browser.
+        yield new Script('test', $context->enabled('browser') ? 'pest --exclude-testsuite=Browser' : 'pest');
     }
 }

@@ -9,6 +9,7 @@ use Bambamboole\ExtendedTestbench\Features\Artifacts\GitignoreEntries;
 use Bambamboole\ExtendedTestbench\Features\Artifacts\StubFile;
 use Bambamboole\ExtendedTestbench\Features\BoostFeature;
 use Bambamboole\ExtendedTestbench\Features\BrowserFeature;
+use Bambamboole\ExtendedTestbench\Features\CiFeature;
 use Bambamboole\ExtendedTestbench\Features\ComposerScriptsFeature;
 use Bambamboole\ExtendedTestbench\Features\Context;
 use Bambamboole\ExtendedTestbench\Features\Feature;
@@ -185,7 +186,7 @@ final class InitCommand extends Command
         return [
             new StaticFeature(null, new ArtisanShim),
             new StaticFeature(null, new StubFile('.gitattributes', 'gitattributes.stub', onlyIfMissing: true)),
-            new StaticFeature(null, new StubFile('.github/workflows/ci.yml', 'ci.yml.stub', onlyIfMissing: true)),
+            new CiFeature,
             new StaticFeature(null, GitignoreEntries::defaults()),
             new PestFeature,
             new WorkbenchFeature,
